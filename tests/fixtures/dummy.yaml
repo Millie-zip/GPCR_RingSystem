@@ -1,0 +1,10 @@
+experiment:
+  name: fixture-dummy
+seed: 7
+device:
+  type: auto
+sampling:
+  num_samples: 1
+output:
+  directory: outputs
+  filename: fixture_dummy_sample.json
