@@ -1,0 +1,49 @@
+pipeline:
+  input_path: examples/inputs/stage3_smoke.json
+  checkpoint_path: null
+  output_path: outputs/stage3_smoke_output.json
+  allow_random_weights: true
+
+device:
+  type: cpu
+  dtype: float32
+
+seed: 42
+
+model:
+  type: egnn_denoiser
+  atom_feature_dim: 4
+  edge_feature_dim: 2
+  hidden_dim: 16
+  num_layers: 2
+  timestep_embedding_dim: 8
+  coordinate_scale: 0.1
+  epsilon: 1.0e-8
+  max_time_period: 10000.0
+  descriptor_dim: 3
+
+field_conditioning:
+  mode: additive
+  channels:
+    - occupancy
+    - nearest_distance
+
+field:
+  type: gaussian_geometry
+  sigma: 1.0
+  cutoff: 8.0
+  epsilon: 1.0e-8
+  channels:
+    occupancy: true
+    nearest_distance: true
+
+diffusion:
+  num_timesteps: 4
+  beta_schedule: linear
+  beta_start: 0.001
+  beta_end: 0.02
+  prediction_type: epsilon
+  loss_reduction: mean
+
+sampling:
+  return_trajectory: false

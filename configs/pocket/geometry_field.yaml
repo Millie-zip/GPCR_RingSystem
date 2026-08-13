@@ -1,0 +1,8 @@
+field:
+  type: gaussian_geometry
+  sigma: 1.0
+  cutoff: 6.0
+  epsilon: 1.0e-8
+  channels:
+    occupancy: true
+    nearest_distance: true

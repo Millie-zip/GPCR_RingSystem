@@ -32,10 +32,12 @@ def main() -> int:
             )
 
         print(f"Python executable: {sys.executable}")
-        if sys.prefix != sys.base_prefix:
-            _pass("Virtual environment is active.")
+        conda_environment = (Path(sys.prefix) / "conda-meta").is_dir()
+        if sys.prefix != sys.base_prefix or conda_environment:
+            manager = "Conda" if conda_environment else "venv"
+            _pass(f"Managed Python environment is active: {manager}.")
         else:
-            _warn("No virtual environment detected; use the project .venv.")
+            _warn("No managed environment detected; activate Conda environment GPCR.")
 
         package = importlib.import_module("gpcr_ringgen")
         _pass(f"Package import passed: {package.__file__}")

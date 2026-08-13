@@ -2,7 +2,7 @@
 
 - Python 3.10 is the recommended development and test environment.
 - Package metadata supports Python >= 3.10 and does not impose an artificial upper bound.
-- Use the project `.venv`; create it only on first setup and never recreate it on every run.
+- Use the existing Conda environment named `GPCR`; do not recreate it during project development.
 - The package uses a `src` layout and must be installed in editable mode for development.
 - Use type hints and concise docstrings for public boundaries.
 - Run tests with `python -m pytest` from the project environment.
@@ -14,9 +14,9 @@
 
 Recommended validation sequence:
 
-    .venv/bin/python -m pip install -e .
-    .venv/bin/python scripts/validate_environment.py
-    .venv/bin/python -m pytest
-    .venv/bin/python scripts/sample.py --config configs/experiment/dummy.yaml
-
-On Windows, use `.venv\Scripts\python.exe` in place of `.venv/bin/python`.
+    conda activate GPCR
+    python -m pip install -r requirements.txt
+    python -m pip install --no-deps -e .
+    python scripts/validate_environment.py
+    python -m pytest
+    python scripts/sample.py --config configs/experiment/dummy.yaml

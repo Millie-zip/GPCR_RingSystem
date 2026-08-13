@@ -1,0 +1,13 @@
+# Project dependency manifest.
+#
+# Add only packages that are actually required by the project.
+# Keep runtime and development/test dependencies documented in this file.
+# Pin or constrain versions only after compatibility has been verified.
+#
+# Runtime dependencies:
+numpy>=1.24
+PyYAML>=6.0
+torch>=2.0
+#
+# Development and test dependencies:
+pytest>=7.4

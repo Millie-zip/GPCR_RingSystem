@@ -8,6 +8,8 @@ from typing import Any, Sequence
 from gpcr_ringgen.core.types import (
     DiffusionState,
     GeneratedMolecule,
+    PocketBatch,
+    PocketField,
     RingTopology,
     ScaffoldCondition,
 )
@@ -27,6 +29,14 @@ class ScaffoldProvider(ABC):
     @abstractmethod
     def provide(self, topology: RingTopology) -> ScaffoldCondition:
         """Return one scaffold condition."""
+
+
+class PocketFieldProvider(ABC):
+    """Construct an optional field without fixing its representation or algorithm."""
+
+    @abstractmethod
+    def build(self, pocket: PocketBatch) -> PocketField:
+        """Return field data compatible with the stable PocketField protocol."""
 
 
 class DiffusionModel(ABC):
