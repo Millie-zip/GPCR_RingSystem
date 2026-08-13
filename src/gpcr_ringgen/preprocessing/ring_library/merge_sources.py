@@ -37,39 +37,47 @@ import multiprocessing as mp
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:  # pragma: no cover - optional progress display
+    def tqdm(iterable, *args, **kwargs):
+        return iterable
 from rdkit import Chem, RDLogger
 from rdkit.Chem.MolStandardize import rdMolStandardize
+
+from gpcr_ringgen.preprocessing.paths import data_root
 
 
 # ============================================================
 # 1. 输入数据库
 # ============================================================
 
+PROJECT_ROOT = data_root()
+
 DATABASES = {
     "ZINC": {
-        "path": Path("/share/home/weiliao02/lyx/zinc_project/ZINC_Fused_Ring.db"),
+        "path": PROJECT_ROOT / "ZINC_Fused_Ring.db",
         "table": "fused_ring_molecules",
         "smiles_column": "smiles",
         "id_column": "id",
     },
 
     "PubChem": {
-        "path": Path("/share/home/weiliao02/lyx/zinc_project/PubChem_Fused_Ring.db"),
+        "path": PROJECT_ROOT / "PubChem_Fused_Ring.db",
         "table": None,
         "smiles_column": None,
         "id_column": None,
     },
 
     "COCONUT": {
-        "path": Path("/share/home/weiliao02/lyx/zinc_project/COCONUT_Fused_Ring.db"),
+        "path": PROJECT_ROOT / "COCONUT_Fused_Ring.db",
         "table": None,
         "smiles_column": None,
         "id_column": None,
     },
 
     "ChEMBL": {
-        "path": Path("/share/home/weiliao02/lyx/zinc_project/ChEMBL_Fused_Ring.db"),
+        "path": PROJECT_ROOT / "ChEMBL_Fused_Ring.db",
         "table": None,
         "smiles_column": None,
         "id_column": None,
@@ -81,7 +89,7 @@ DATABASES = {
 # 2. 输出设置
 # ============================================================
 
-OUTPUT_DIR = Path("/share/home/weiliao02/lyx/zinc_project/merged_fused_ring_database")
+OUTPUT_DIR = PROJECT_ROOT / "merged_fused_ring_database"
 OUTPUT_DB = OUTPUT_DIR / "merged_fused_ring_unique.db"
 LOG_FILE = OUTPUT_DIR / "merge_run.log"
 

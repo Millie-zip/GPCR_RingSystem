@@ -6,13 +6,14 @@ import requests
 import tempfile
 import time
 import shutil
-import hashlib
 
 from urllib.parse import urlparse
 
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 from rdkit import RDLogger
+
+from gpcr_ringgen.preprocessing.paths import data_root
 
 
 # ================================
@@ -26,7 +27,7 @@ RDLogger.DisableLog("rdApp.*")
 # 输出目录
 # ================================
 
-OUTPUT_DIR = "/share/home/weiliao02/lyx/zinc_project"
+OUTPUT_DIR = str(data_root() / "zinc")
 
 os.makedirs(
     OUTPUT_DIR,
@@ -35,10 +36,7 @@ os.makedirs(
 
 
 # ZINC网页下载得到的Raw URLs文件
-URI_FILE = os.path.join(
-    OUTPUT_DIR,
-    "ZINC-downloader-2D-smi (1).uri"
-)
+URI_FILE = str(data_root() / "zinc" / "ZINC-downloader-2D-smi.uri")
 
 
 # 输出数据库
@@ -127,19 +125,6 @@ if os.path.exists(DONE_FILE):
 else:
 
     processed = set()
-
-
-# 兼容旧版 processed_files.txt：
-# 旧记录虽然使用了不稳定的 hash(url)，但仍可提取前面的文件名。
-processed_filenames = set()
-
-for old_task_id in processed:
-
-    if "_" in old_task_id:
-
-        old_filename = old_task_id.rsplit("_", 1)[0]
-
-        processed_filenames.add(old_filename)
 
 
 # ================================
@@ -276,11 +261,11 @@ def get_task_id(url):
 
     filename = get_filename_from_url(url)
 
-    stable_hash = hashlib.sha256(
-        url.encode("utf-8")
-    ).hexdigest()[:16]
-
-    return filename + "_" + stable_hash
+    return (
+        filename
+        + "_"
+        + str(abs(hash(url)))
+    )
 
 
 # ================================
@@ -612,7 +597,6 @@ def process_url(url):
             f.write(task_id + "\n")
 
         processed.add(task_id)
-        processed_filenames.add(filename)
 
         print(
             "完成",
@@ -675,10 +659,7 @@ try:
             f"\n进度: {index}/{len(urls)}"
         )
 
-        if (
-            task_id in processed
-            or filename in processed_filenames
-        ):
+        if task_id in processed:
 
             print(
                 "跳过:",

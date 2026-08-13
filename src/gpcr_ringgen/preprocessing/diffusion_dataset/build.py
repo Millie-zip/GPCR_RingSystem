@@ -10,8 +10,8 @@ The script does not modify the prefilter DB, global scaffold index DB, or any of
 Expected selected scaffold set:
     PASS + BORDERLINE = 314,659
 
-Output:
-    /share/home/weiliao02/lyx/zinc_project/5ht2c_3d_diffusion_library_v1/
+Output beneath ``GPCR_RINGGEN_DATA_ROOT``:
+    5ht2c_3d_diffusion_library_v1/
         5ht2c_3d_diffusion_library_v1.db
         selected_scaffolds.csv
         build_report.txt
@@ -26,12 +26,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from gpcr_ringgen.preprocessing.paths import data_root
+
 
 # =============================================================================
 # Fixed project paths
 # =============================================================================
 
-ROOT = Path("/share/home/weiliao02/lyx/zinc_project")
+ROOT = data_root()
 
 PREFILTER_DB = (
     ROOT
@@ -767,7 +769,9 @@ def main():
         conn.close()
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Run the diffusion-dataset materialization command."""
+
     try:
         main()
     except Exception as exc:
@@ -776,3 +780,7 @@ if __name__ == "__main__":
         print("=" * 78, file=sys.stderr)
         print(str(exc), file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    cli()

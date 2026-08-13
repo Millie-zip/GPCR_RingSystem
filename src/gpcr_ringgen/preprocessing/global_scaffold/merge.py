@@ -33,8 +33,10 @@ from pathlib import Path
 
 from rdkit import Chem
 
+from gpcr_ringgen.preprocessing.paths import data_root
 
-PROJECT = Path("/share/home/weiliao02/lyx/zinc_project")
+
+PROJECT = data_root()
 RUN_DIR = PROJECT / "global_scaffold_analysis_strict_full_v4"
 PART_ROOT = RUN_DIR / "reports" / "_part_results"
 VALIDATION_ROOT = PART_ROOT / "validation"

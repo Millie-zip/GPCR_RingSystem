@@ -1,4 +1,5 @@
 .venv/
+.idea/
 
 __pycache__/
 *.pyc
@@ -26,3 +27,10 @@ data/processed/*
 wandb/
 runs/
 logs/
+
+# Large preprocessing artifacts
+*.db
+*.db-wal
+*.db-shm
+*.sdf
+*.smi

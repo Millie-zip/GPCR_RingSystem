@@ -15,6 +15,28 @@ Ring processing, a complete denoiser training loop, sampling guidance, docking,
 chemical evaluation, and molecule export are not implemented. The Dummy
 Pipeline remains a deterministic workflow for checking software boundaries.
 
+## Repository layout
+
+Offline source-to-model preparation follows the standard package boundary:
+
+- `src/gpcr_ringgen/preprocessing/` contains reusable fused-ring, scaffold,
+  pocket-prefilter, and diffusion-dataset implementations;
+- `scripts/preprocessing/` contains thin commands and source-acquisition jobs;
+- `configs/` contains model and pipeline configuration;
+- `data/` is for small local artifacts; production databases should use an
+  external data root;
+- `tests/` verifies package contracts and layout.
+
+The flow is source ingestion -> fused-ring master library -> eligible index ->
+global scaffold index -> pocket prefilter -> 3D diffusion dataset. Set:
+
+    export GPCR_RINGGEN_DATA_ROOT=/path/to/gpcr-ringgen-data
+
+On Windows PowerShell use `$env:GPCR_RINGGEN_DATA_ROOT = "D:\\path\\to\\data"`.
+Install optional dependencies with `python -m pip install -e
+".[preprocessing]"`. See `scripts/preprocessing/README.md` for commands and
+`docs/preprocessing.md` for the exact old-to-new file map.
+
 ## Environment requirements
 
 - Recommended Python version: Python 3.10

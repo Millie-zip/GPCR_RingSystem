@@ -37,12 +37,13 @@ from rdkit import Chem
 from rdkit.Chem import AllChem, rdDistGeom, rdMolDescriptors
 from rdkit import rdBase
 
-PROJECT_DIR = Path("/share/home/weiliao02/lyx/zinc_project")
+from gpcr_ringgen.preprocessing.paths import data_root
+
+PROJECT_DIR = data_root()
 SOURCE_DB = PROJECT_DIR / "global_scaffold_analysis_strict_full_v4" / "global_scaffold_index.db"
 RECEPTOR_PDB = PROJECT_DIR / "8DPF_V1_prepared" / "8DPF_receptor_V1_prepared.pdb"
 LORCASERIN_PDB = PROJECT_DIR / "8DPF_V1_prepared" / "8DPF_lorcaserin_reference_raw.pdb"
 OUTPUT_DIR = PROJECT_DIR / "gpcr_pocket_prefilter_final_parallel_v1"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DB = OUTPUT_DIR / "gpcr_pocket_prefilter_final_parallel_v1.db"
 OUTPUT_CSV = OUTPUT_DIR / "gpcr_pocket_prefilter_final_parallel_v1.csv"
 DB_SCHEMA_REPORT = OUTPUT_DIR / "database_schema_detected.txt"
@@ -1089,7 +1090,9 @@ def parse_args():
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def cli():
+    """Run the command-line pocket prefilter entry point."""
+
     args = parse_args()
 
     if args.worker_shard is not None:
@@ -1109,3 +1112,7 @@ if __name__ == "__main__":
 
     else:
         master_parallel(args.workers)
+
+
+if __name__ == "__main__":
+    cli()
