@@ -1,0 +1,48 @@
+{
+  "sample_id": "stage3-smoke-001",
+  "metadata": {
+    "purpose": "independent-stage3-structural-smoke-test",
+    "scaffold_source": "fixed-mock",
+    "descriptor_source": "fixed-test-input"
+  },
+  "pocket": {
+    "coordinates": [
+      [9.0, -5.0, 2.0],
+      [13.0, -5.0, 2.0],
+      [11.0, -2.0, 2.0]
+    ],
+    "features": [
+      [1.0, 0.0],
+      [1.0, 0.0],
+      [0.0, 1.0]
+    ],
+    "mask": [true, true, true],
+    "atom_types": ["CA", "CB", "O"],
+    "elements": ["C", "C", "O"],
+    "residue_names": ["ALA", "VAL", "SER"],
+    "residue_ids": ["10", "11", "12"],
+    "chain_ids": ["A", "A", "A"]
+  },
+  "scaffold": {
+    "atom_features": [
+      [1.0, 0.0, 0.5, -0.5],
+      [0.0, 1.0, -0.5, 0.5],
+      [1.0, 1.0, 0.25, -0.25]
+    ],
+    "edge_index": [
+      [0, 1, 2],
+      [1, 2, 0]
+    ],
+    "edge_features": [
+      [1.0, 0.0],
+      [0.5, 0.5],
+      [0.0, 1.0]
+    ],
+    "atom_mask": [true, true, true],
+    "edge_mask": [true, true, true]
+  },
+  "descriptor": {
+    "values": [1.0, 2.0, 3.0],
+    "mask": [true, true, true]
+  }
+}
