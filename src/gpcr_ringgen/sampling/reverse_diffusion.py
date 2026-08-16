@@ -18,6 +18,10 @@ from gpcr_ringgen.models.diffusion import (
     initialize_stage3_state,
     project_zero_center_of_mass,
 )
+from gpcr_ringgen.models.diffusion.chemical import (
+    categorical_reverse_step,
+    initialize_joint_stage3_state,
+)
 from gpcr_ringgen.models.equivariant import DenoiserOutput
 from gpcr_ringgen.pocket import (
     PocketCoordinateTransform,
@@ -270,6 +274,15 @@ class Stage3SamplingOutput:
         ):
             if not torch.equal(graph_tensor, state_tensor):
                 raise ValueError(f"graph {name} must match final_state")
+        for name, graph_tensor, state_tensor in (
+            ("atom_types", self.graph.atom_types, state.atom_types),
+            ("bond_types", self.graph.bond_types, state.bond_types),
+        ):
+            if (graph_tensor is None) != (state_tensor is None):
+                raise ValueError(f"graph {name} presence must match final_state")
+            if graph_tensor is not None and state_tensor is not None:
+                if not torch.equal(graph_tensor, state_tensor):
+                    raise ValueError(f"graph {name} must match final_state")
         if self.metadata is not state.metadata:
             raise ValueError("sampling metadata must be the final_state metadata")
         padding = ~state.mask.atom_mask.unsqueeze(-1)
@@ -303,6 +316,11 @@ class DDPMStage3Sampler:
             raise TypeError("schedule must be a DDPMNoiseSchedule")
         if schedule.config.prediction_type != "epsilon":
             raise ValueError("DDPMStage3Sampler requires epsilon prediction")
+        if schedule.config.mode != "coordinate_only":
+            raise ValueError(
+                "DDPMStage3Sampler requires coordinate_only mode; use "
+                "JointDDPMStage3Sampler for joint_chemical mode"
+            )
         self.schedule = schedule
 
     def _predict_noise(
@@ -428,6 +446,166 @@ class DDPMStage3Sampler:
             edge_index=state.edge_index,
             edge_features=state.edge_features,
             coordinates=state.coordinates,
+            atom_types=state.atom_types,
+            bond_types=state.bond_types,
+        )
+        result = Stage3SamplingOutput(
+            final_state=state,
+            graph=graph,
+            metadata=state.metadata,
+            trajectory=None if trajectory is None else tuple(trajectory),
+        )
+        result.validate(num_timesteps=self.schedule.num_timesteps)
+        return result
+
+
+class JointDDPMStage3Sampler:
+    """Jointly sample atom labels, fixed-edge bond labels, and coordinates.
+
+    The topology tensors ``edge_index``, ``atom_mask``, and ``edge_mask`` are
+    copied from :class:`Stage3Input` and never modified. Atom and bond labels
+    start from uniform categorical priors while coordinates start from the
+    existing centered Gaussian prior.
+    """
+
+    def __init__(self, schedule: DDPMNoiseSchedule) -> None:
+        if not isinstance(schedule, DDPMNoiseSchedule):
+            raise TypeError("schedule must be a DDPMNoiseSchedule")
+        if schedule.config.mode != "joint_chemical":
+            raise ValueError("JointDDPMStage3Sampler requires joint_chemical mode")
+        if schedule.config.prediction_type != "epsilon":
+            raise ValueError("JointDDPMStage3Sampler requires epsilon prediction")
+        if schedule.config.num_atom_types is None:
+            raise ValueError("joint sampler requires num_atom_types")
+        if schedule.config.num_bond_types is None:
+            raise ValueError("joint sampler requires num_bond_types")
+        self.schedule = schedule
+
+    @staticmethod
+    def _predict(
+        denoiser: nn.Module,
+        state: Stage3DiffusionState,
+        pocket_field: QueryablePocketField | None,
+    ) -> DenoiserOutput:
+        if pocket_field is None:
+            output = denoiser(state, state.timestep)
+        else:
+            output = denoiser(state, state.timestep, pocket_field=pocket_field)
+        if not isinstance(output, DenoiserOutput):
+            raise TypeError("denoiser must return DenoiserOutput")
+        output.validate(state)
+        if output.atom_type_logits is None or output.bond_type_logits is None:
+            raise ValueError("joint denoiser must predict atom and bond type logits")
+        return output
+
+    def sample(
+        self,
+        stage3_input: Stage3Input,
+        denoiser: nn.Module,
+        *,
+        seed: int,
+        pocket_field: QueryablePocketField | None = None,
+        return_trajectory: bool = False,
+    ) -> Stage3SamplingOutput:
+        """Run fixed-topology reverse diffusion from chemical/coordinate noise."""
+
+        if not isinstance(stage3_input, Stage3Input):
+            raise TypeError("stage3_input must be a Stage3Input")
+        stage3_input.validate()
+        if not isinstance(denoiser, nn.Module):
+            raise TypeError("denoiser must be a torch.nn.Module")
+        if not isinstance(return_trajectory, bool):
+            raise TypeError("return_trajectory must be a bool")
+        effective_field = pocket_field
+        if effective_field is None and isinstance(
+            stage3_input.pocket_field,
+            QueryablePocketField,
+        ):
+            effective_field = stage3_input.pocket_field
+        if effective_field is not None:
+            effective_field.validate(
+                batch_size=stage3_input.batch_size,
+                device=stage3_input.device,
+            )
+
+        state = initialize_joint_stage3_state(
+            stage3_input,
+            self.schedule,
+            seed=seed,
+        )
+        generator = make_torch_generator(
+            (seed + 2) % (2**64),
+            device=state.coordinates.device,
+        )
+        trajectory: list[Tensor] | None = (
+            [state.coordinates.clone()] if return_trajectory else None
+        )
+        num_atom_types = self.schedule.config.num_atom_types
+        num_bond_types = self.schedule.config.num_bond_types
+        if num_atom_types is None or num_bond_types is None:
+            raise RuntimeError("joint class counts are unavailable")
+
+        was_training = denoiser.training
+        denoiser.eval()
+        try:
+            with torch.no_grad():
+                for timestep_index in range(
+                    self.schedule.num_timesteps - 1,
+                    -1,
+                    -1,
+                ):
+                    timestep = torch.full(
+                        (state.batch_size,),
+                        timestep_index,
+                        dtype=torch.long,
+                        device=state.coordinates.device,
+                    )
+                    state = replace(state, timestep=timestep)
+                    prediction = self._predict(denoiser, state, effective_field)
+                    if state.atom_types is None or state.bond_types is None:
+                        raise RuntimeError("joint state labels are unavailable")
+                    previous_atom_types = categorical_reverse_step(
+                        state.atom_types,
+                        prediction.atom_type_logits,
+                        timestep,
+                        self.schedule,
+                        state.mask.atom_mask,
+                        num_atom_types,
+                        generator=generator,
+                    )
+                    previous_bond_types = categorical_reverse_step(
+                        state.bond_types,
+                        prediction.bond_type_logits,
+                        timestep,
+                        self.schedule,
+                        state.mask.edge_mask,
+                        num_bond_types,
+                        generator=generator,
+                    )
+                    coordinate_step = ddpm_reverse_step(
+                        state,
+                        prediction.coordinate_noise,
+                        self.schedule,
+                        generator=generator,
+                    )
+                    state = replace(
+                        coordinate_step.previous_state,
+                        atom_types=previous_atom_types,
+                        bond_types=previous_bond_types,
+                    )
+                    state.validate()
+                    if trajectory is not None:
+                        trajectory.append(state.coordinates.clone())
+        finally:
+            denoiser.train(was_training)
+
+        graph = MolecularGraph(
+            atom_features=state.atom_features,
+            edge_index=state.edge_index,
+            edge_features=state.edge_features,
+            coordinates=state.coordinates,
+            atom_types=state.atom_types,
+            bond_types=state.bond_types,
         )
         result = Stage3SamplingOutput(
             final_state=state,
@@ -465,6 +643,7 @@ def restore_global_coordinates(
 
 __all__ = [
     "DDPMStage3Sampler",
+    "JointDDPMStage3Sampler",
     "ReverseDiffusionStepOutput",
     "Stage3SamplingOutput",
     "ddpm_reverse_step",

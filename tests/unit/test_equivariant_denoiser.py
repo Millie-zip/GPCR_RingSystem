@@ -279,3 +279,5 @@ def test_repository_denoiser_config_loads() -> None:
     assert config.hidden_dim == 64
     assert config.num_layers == 3
     assert config.descriptor_dim is None
+    assert config.num_atom_types == 9
+    assert config.num_bond_types == 4

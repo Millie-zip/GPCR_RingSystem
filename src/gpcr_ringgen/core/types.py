@@ -29,6 +29,11 @@ def _require_bool(name: str, tensor: Tensor) -> None:
         raise TypeError(f"{name} must have dtype torch.bool, got {tensor.dtype}.")
 
 
+def _require_long(name: str, tensor: Tensor) -> None:
+    if tensor.dtype != torch.long:
+        raise TypeError(f"{name} must have dtype torch.long, got {tensor.dtype}.")
+
+
 def _validate_edge_references(
     edge_index: Tensor,
     atom_mask: Tensor,
@@ -109,6 +114,13 @@ class MolecularGraph:
             dtype as ``atom_features``. Rows with ``edge_mask=False`` are padding.
         coordinates: Optional shape ``[B, N, 3]``; floating-point; same device
             and dtype as ``atom_features``. Padded atoms have unspecified values.
+        atom_types: Optional shape ``[B, N]``; ``torch.long``; same device.
+            Values are categorical chemical atom labels. The tensor does not
+            define node existence; topology and atom count remain fixed by
+            ``edge_index`` and the external ``atom_mask``.
+        bond_types: Optional shape ``[B, E]``; ``torch.long``; same device.
+            Values are categorical bond labels only for the already existing
+            topology edges. They never encode edge existence.
 
     ``B`` is batch size, ``N`` padded atom capacity, and ``E`` padded edge
     capacity. The feature dimensions remain scientific design decisions.
@@ -118,6 +130,8 @@ class MolecularGraph:
     edge_index: Tensor
     edge_features: Tensor
     coordinates: Tensor | None = None
+    atom_types: Tensor | None = None
+    bond_types: Tensor | None = None
 
     @property
     def batch_size(self) -> int:
@@ -159,6 +173,23 @@ class MolecularGraph:
             if tuple(self.coordinates.shape) != (batch_size, num_atoms, 3):
                 raise ValueError("coordinates must have shape [B, N, 3].")
             tensors["coordinates"] = self.coordinates
+        if (self.atom_types is None) != (self.bond_types is None):
+            raise ValueError("atom_types and bond_types must either both be present or absent.")
+        if self.atom_types is not None and self.bond_types is not None:
+            _require_rank("atom_types", self.atom_types, 2)
+            _require_rank("bond_types", self.bond_types, 2)
+            _require_long("atom_types", self.atom_types)
+            _require_long("bond_types", self.bond_types)
+            if tuple(self.atom_types.shape) != (batch_size, num_atoms):
+                raise ValueError("atom_types must have shape [B, N].")
+            if tuple(self.bond_types.shape) != (batch_size, num_edges):
+                raise ValueError("bond_types must have shape [B, E].")
+            if bool((self.atom_types < 0).any()):
+                raise ValueError("atom_types values must be non-negative.")
+            if bool((self.bond_types < 0).any()):
+                raise ValueError("bond_types values must be non-negative.")
+            tensors["atom_types"] = self.atom_types
+            tensors["bond_types"] = self.bond_types
 
         for name, tensor in tensors.items():
             if tensor.device != self.atom_features.device:
@@ -347,6 +378,21 @@ class Stage2Output:
             raise ValueError("edge_mask shape must match scaffold [B, E].")
         if self.mask.device != self.scaffold.atom_features.device:
             raise ValueError("Stage 2 masks and scaffold tensors must share a device.")
+        if self.scaffold.atom_types is not None and self.scaffold.bond_types is not None:
+            if bool(
+                (
+                    self.scaffold.atom_types.masked_select(~self.mask.atom_mask)
+                    != 0
+                ).any()
+            ):
+                raise ValueError("Stage 2 atom_types must be zero for padded atoms.")
+            if bool(
+                (
+                    self.scaffold.bond_types.masked_select(~self.mask.edge_mask)
+                    != 0
+                ).any()
+            ):
+                raise ValueError("Stage 2 bond_types must be zero for padded edges.")
         self.metadata.validate(batch_size)
         _validate_edge_references(
             self.scaffold.edge_index,
@@ -419,6 +465,21 @@ class Stage3Input:
         )
         if self.pocket_field is not None:
             self.pocket_field.validate(batch_size=batch_size, device=self.device)
+        if self.scaffold.atom_types is not None and self.scaffold.bond_types is not None:
+            if bool(
+                (
+                    self.scaffold.atom_types.masked_select(~self.mask.atom_mask)
+                    != 0
+                ).any()
+            ):
+                raise ValueError("Stage 3 atom_types must be zero for padded atoms.")
+            if bool(
+                (
+                    self.scaffold.bond_types.masked_select(~self.mask.edge_mask)
+                    != 0
+                ).any()
+            ):
+                raise ValueError("Stage 3 bond_types must be zero for padded edges.")
 
 
 @dataclass
@@ -438,6 +499,12 @@ class Stage3DiffusionState:
             ``descriptor_mask=False`` are missing/padding and must be ignored.
         timestep: Shape ``[B]``; ``torch.long``; model device. One non-negative
             discrete timestep is stored per sample.
+        atom_types: Optional shape ``[B, N]``; ``torch.long``; model device.
+            In joint chemical diffusion this is the noisy atom label state.
+            Node count and validity remain frozen by ``atom_mask``.
+        bond_types: Optional shape ``[B, E]``; ``torch.long``; model device.
+            In joint chemical diffusion this is the noisy label on each fixed
+            topology edge. ``edge_index`` and edge existence never change.
     """
 
     atom_features: Tensor
@@ -448,6 +515,8 @@ class Stage3DiffusionState:
     timestep: Tensor
     mask: BatchMask
     metadata: BatchMetadata
+    atom_types: Tensor | None = None
+    bond_types: Tensor | None = None
 
     @property
     def batch_size(self) -> int:
@@ -461,6 +530,8 @@ class Stage3DiffusionState:
             edge_index=self.edge_index,
             edge_features=self.edge_features,
             coordinates=self.coordinates,
+            atom_types=self.atom_types,
+            bond_types=self.bond_types,
         )
         graph.validate()
         descriptor_batch = DescriptorBatch(self.descriptor)
@@ -488,6 +559,11 @@ class Stage3DiffusionState:
             self.edge_features.shape[1],
         ):
             raise ValueError("edge_mask shape must match edge_features [B, E].")
+        if self.atom_types is not None and self.bond_types is not None:
+            if bool((self.atom_types.masked_select(~self.mask.atom_mask) != 0).any()):
+                raise ValueError("atom_types must be zero for padded atoms.")
+            if bool((self.bond_types.masked_select(~self.mask.edge_mask) != 0).any()):
+                raise ValueError("bond_types must be zero for padded edges.")
         if self.mask.descriptor_mask is None or tuple(self.mask.descriptor_mask.shape) != tuple(self.descriptor.shape):
             raise ValueError("descriptor_mask shape must match descriptor [B, D].")
         if self.mask.device != self.atom_features.device:

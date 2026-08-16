@@ -16,7 +16,11 @@ from gpcr_ringgen.data import (
     load_stage3_inference_request,
     stage2_output_to_stage3_input,
 )
-from gpcr_ringgen.models.diffusion import DDPMConfig, DDPMNoiseSchedule
+from gpcr_ringgen.models.diffusion import (
+    ChemicalVocabulary,
+    DDPMConfig,
+    DDPMNoiseSchedule,
+)
 from gpcr_ringgen.models.equivariant import (
     EquivariantDenoiserBackbone,
     EquivariantDenoiserConfig,
@@ -32,6 +36,7 @@ from gpcr_ringgen.pocket import (
 )
 from gpcr_ringgen.sampling import (
     DDPMStage3Sampler,
+    JointDDPMStage3Sampler,
     Stage3SamplingOutput,
     restore_global_coordinates,
 )
@@ -163,6 +168,7 @@ class Stage3InferenceRun:
     global_coordinates: Tensor
     checkpoint_loaded: bool
     random_weights: bool
+    chemical_vocabulary: ChemicalVocabulary | None
 
 
 def _checkpoint_state_dict(
@@ -215,6 +221,7 @@ def _serialize_output(
     pocket_field: QueryablePocketField,
     global_coordinates: Tensor,
     checkpoint_loaded: bool,
+    chemical_vocabulary: ChemicalVocabulary | None,
 ) -> dict[str, Any]:
     samples: list[dict[str, Any]] = []
     state = sampling_output.final_state
@@ -260,6 +267,32 @@ def _serialize_output(
             },
             "metadata": dict(state.metadata.records[batch_index]),
         }
+        if state.atom_types is not None and state.bond_types is not None:
+            atom_ids = state.atom_types[batch_index].detach().cpu().tolist()
+            bond_ids = state.bond_types[batch_index].detach().cpu().tolist()
+            atom_mask = state.mask.atom_mask[batch_index].detach().cpu().tolist()
+            edge_mask = state.mask.edge_mask[batch_index].detach().cpu().tolist()
+            sample["chemical_labels"] = {
+                "atom_type_ids": atom_ids,
+                "bond_type_ids": bond_ids,
+            }
+            if chemical_vocabulary is not None:
+                sample["chemical_labels"].update(
+                    {
+                        "atom_types": [
+                            chemical_vocabulary.atom_types[label]
+                            if valid
+                            else None
+                            for label, valid in zip(atom_ids, atom_mask, strict=True)
+                        ],
+                        "bond_types": [
+                            chemical_vocabulary.bond_types[label]
+                            if valid
+                            else None
+                            for label, valid in zip(bond_ids, edge_mask, strict=True)
+                        ],
+                    }
+                )
         if sampling_output.trajectory is not None:
             sample["trajectory_local_coordinates"] = [
                 coordinates[batch_index].detach().cpu().tolist()
@@ -284,6 +317,15 @@ def _serialize_output(
         "seed": pipeline_config.seed,
         "device": str(state.coordinates.device),
         "dtype": str(state.coordinates.dtype),
+        "diffusion_mode": DDPMConfig.from_mapping(config).mode,
+        "chemical_vocabulary": (
+            None
+            if chemical_vocabulary is None
+            else {
+                "atom_types": list(chemical_vocabulary.atom_types),
+                "bond_types": list(chemical_vocabulary.bond_types),
+            }
+        ),
         "field_channels": list(pocket_field.channels),
         "num_timesteps": len(sampling_output.trajectory) - 1
         if sampling_output.trajectory is not None
@@ -338,9 +380,33 @@ def run_stage3_inference(
     )
 
     set_seed(pipeline_config.seed)
-    backbone = EquivariantDenoiserBackbone(
-        EquivariantDenoiserConfig.from_mapping(config)
-    )
+    model_config = EquivariantDenoiserConfig.from_mapping(config)
+    diffusion_config = DDPMConfig.from_mapping(config)
+    chemical_vocabulary: ChemicalVocabulary | None = None
+    if diffusion_config.mode == "joint_chemical":
+        try:
+            chemical_vocabulary = ChemicalVocabulary.from_mapping(config)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ConfigurationError(
+                f"invalid chemical_vocabulary config: {exc}"
+            ) from exc
+        if model_config.num_atom_types != diffusion_config.num_atom_types:
+            raise ConfigurationError(
+                "model and diffusion num_atom_types must match"
+            )
+        if model_config.num_bond_types != diffusion_config.num_bond_types:
+            raise ConfigurationError(
+                "model and diffusion num_bond_types must match"
+            )
+        if chemical_vocabulary.num_atom_types != diffusion_config.num_atom_types:
+            raise ConfigurationError(
+                "chemical vocabulary and diffusion num_atom_types must match"
+            )
+        if chemical_vocabulary.num_bond_types != diffusion_config.num_bond_types:
+            raise ConfigurationError(
+                "chemical vocabulary and diffusion num_bond_types must match"
+            )
+    backbone = EquivariantDenoiserBackbone(model_config)
     model = FieldConditionedEquivariantDenoiser(
         backbone,
         conditioning_config,
@@ -353,8 +419,13 @@ def run_stage3_inference(
             device=device,
         )
 
-    schedule = DDPMNoiseSchedule(DDPMConfig.from_mapping(config))
-    sampling_output = DDPMStage3Sampler(schedule).sample(
+    schedule = DDPMNoiseSchedule(diffusion_config)
+    sampler = (
+        JointDDPMStage3Sampler(schedule)
+        if diffusion_config.mode == "joint_chemical"
+        else DDPMStage3Sampler(schedule)
+    )
+    sampling_output = sampler.sample(
         stage3_input,
         model,
         seed=pipeline_config.seed,
@@ -376,6 +447,7 @@ def run_stage3_inference(
         pocket_field=pocket_field,
         global_coordinates=global_coordinates,
         checkpoint_loaded=checkpoint_loaded,
+        chemical_vocabulary=chemical_vocabulary,
     )
     output_path = save_json(payload, pipeline_config.output_path)
     return Stage3InferenceRun(
@@ -386,6 +458,7 @@ def run_stage3_inference(
         global_coordinates=global_coordinates,
         checkpoint_loaded=checkpoint_loaded,
         random_weights=not checkpoint_loaded,
+        chemical_vocabulary=chemical_vocabulary,
     )
 
 

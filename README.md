@@ -5,11 +5,12 @@
 > Current status: Stage 3 data contracts, reproducible three-dimensional
 > initialization, reversible pocket geometry preprocessing, and a basic
 > queryable geometry field and pocket-independent equivariant denoiser
-> backbone are available. The Stage 3 forward DDPM process and masked
-> epsilon-prediction loss are also available for training integration, together
-> with optional Field-conditioned equivariant denoising and Stage 3 DDPM
-> reverse sampling. A configuration-driven independent Stage 3 inference
-> Pipeline is available for fixed scaffold and descriptor inputs.
+> backbone are available. Stage 3 now supports fixed-topology joint chemical
+> diffusion: node count, `edge_index`, edge existence, and ring connectivity
+> remain frozen, while atom labels, labels on existing bonds, and 3D coordinates
+> are jointly noised and denoised. Coordinate-only diffusion remains available
+> as a baseline. A configuration-driven independent Stage 3 inference Pipeline
+> is available for fixed topology and descriptor inputs.
 
 Ring processing, a complete denoiser training loop, sampling guidance, docking,
 chemical evaluation, and molecule export are not implemented. The Dummy
@@ -76,6 +77,7 @@ This checkout already uses the configured `GPCR` environment. Do not recreate it
     python -m pytest tests/unit/test_stage3_initialization.py
     python -m pytest tests/unit/test_equivariant_denoiser.py
     python -m pytest tests/unit/test_diffusion_process.py
+    python -m pytest tests/unit/test_joint_chemical_diffusion.py
     python -m pytest tests/unit/test_field_conditioned_denoiser.py
     python -m pytest tests/unit/test_reverse_diffusion_sampling.py
     python -m pytest tests/integration/test_stage3_inference_pipeline.py
@@ -114,6 +116,14 @@ using valid ligand atoms only. Padded coordinate rows are zero. The
 `NoisePredictionLoss` computes MSE only where `atom_mask=True`, with `mean`
 reduction dividing by three times the number of valid atoms.
 
+With `diffusion.mode: joint_chemical`, `q_sample_joint(...)` additionally uses
+uniform categorical corruption for `atom_types [B, N]` and
+`bond_types [B, E]`. The cumulative transition is
+`alpha_bar_t * one_hot(z_0) + (1-alpha_bar_t) / K`. `edge_index`, node/edge
+masks, atom count, and edge existence are never noised. `JointDiffusionLoss`
+combines coordinate epsilon MSE with masked atom-type and bond-type cross
+entropy.
+
 The example `configs/diffusion/ddpm.yaml` exposes:
 
 - `num_timesteps`: number of discrete forward steps;
@@ -121,6 +131,16 @@ The example `configs/diffusion/ddpm.yaml` exposes:
 - `beta_start` / `beta_end`: endpoints of the linear beta schedule;
 - `prediction_type`: currently `epsilon`;
 - `loss_reduction`: `mean` or `sum`.
+- `mode`: `coordinate_only` or `joint_chemical`;
+- `num_atom_types` / `num_bond_types`: categorical vocabulary sizes;
+- coordinate, atom, and bond loss weights.
+
+`chemical_vocabulary.atom_types` and `chemical_vocabulary.bond_types` define
+the stable ID-to-name ordering. Bond vocabulary entries apply only to existing
+topology edges and therefore contain no `NO_BOND` class. In joint mode,
+`atom_features` and `edge_features` must contain topology-only invariant
+features; target element or bond-order information there would leak the clean
+labels into the denoiser.
 
 Pass local generators created by `make_torch_generator(seed, device)` to
 `sample_timesteps` and `q_sample` for reproducible sampling without mutating the
@@ -129,7 +149,13 @@ implemented separately from the training-side API.
 
 ## Stage 3 reverse diffusion sampling
 
-`DDPMStage3Sampler(schedule).sample(stage3_input, denoiser, seed=...)` starts
+`DDPMStage3Sampler(schedule).sample(stage3_input, denoiser, seed=...)` is the
+coordinate-only baseline. `JointDDPMStage3Sampler` starts atom and existing-edge
+bond labels from uniform categorical priors and coordinates from the centered
+Gaussian prior. Both apply every reverse timestep from `T-1` through `0`.
+The joint sampler never changes `edge_index`, `atom_mask`, or `edge_mask`.
+
+The coordinate reverse process starts
 from the existing centered Gaussian Stage 3 initialization and applies every
 reverse timestep from `T-1` through `0`. It uses the same epsilon-prediction and
 linear-beta schedule configured by `configs/diffusion/ddpm.yaml`; DDIM or other
@@ -148,10 +174,11 @@ zero-center-of-mass subspace. Padded atoms remain zero at every step. The
 sampler temporarily calls `model.eval()`, runs under `torch.no_grad()`, and
 restores the model's previous training/evaluation state afterward.
 
-The output contains generated local coordinates `[B, N, 3]`, the unchanged
-graph/topology tensors, descriptor-bearing final state, and per-sample
-metadata. Pass `return_trajectory=True` to retain initialization plus all
-reverse states; it defaults to `False` to avoid `O(T*B*N)` memory. Pass a
+The joint output contains generated atom labels `[B, N]`, generated bond labels
+`[B, E]` on the unchanged edge set, local coordinates `[B, N, 3]`, descriptor,
+and metadata. Pass `return_trajectory=True` to retain coordinate initialization
+plus all reverse coordinate states; it defaults to `False` to avoid
+`O(T*B*N)` memory. Pass a
 `QueryablePocketField` for Field-conditioned inference or use conditioning
 `mode: none` with no field for ablation.
 
@@ -175,13 +202,13 @@ Its orchestration is deliberately thin:
     -> preprocess_pocket
     -> build_geometry_field
     -> stage2_output_to_stage3_input
-    -> DDPMStage3Sampler.sample
+    -> JointDDPMStage3Sampler.sample
     -> restore_global_coordinates
     -> structured JSON output
 
 `examples/inputs/stage3_smoke.json` is the standard single-sample input
 example. It contains global pocket coordinates and annotations, a fixed/mock
-scaffold represented by atom features plus bond topology, a descriptor vector,
+unlabeled topology represented by invariant node features plus `edge_index`, a descriptor vector,
 masks, a sample ID, and metadata. The loader only converts this JSON to the
 existing project contracts; it does not calculate descriptors or call a Stage
 1/Stage 2 model.
@@ -203,7 +230,7 @@ pipeline_smoke_test_only`. A checkpoint must contain the configured
 `model_state_dict` / `state_dict`.
 
 The JSON output contains the sample ID, padded local and restored global
-coordinates, atom mask, fixed atom/bond topology, descriptor and mask,
+coordinates, generated atom/bond labels, atom mask, fixed topology/edge set, descriptor and mask,
 metadata, pocket transform center, Field channel order, seed, checkpoint
 status, and a complete configuration snapshot/reference. Trajectory is omitted
 by default. The project has no reliable SDF/MOL reconstruction writer, so this
@@ -212,7 +239,9 @@ Pipeline does not invent one.
 ## Base equivariant denoiser
 
 `EquivariantDenoiserBackbone(config)(state, timestep)` returns a
-`DenoiserOutput` containing coordinate noise shaped `[B, N, 3]`. The backbone
+`DenoiserOutput` containing coordinate noise shaped `[B, N, 3]`. When
+`num_atom_types` and `num_bond_types` are configured, it also returns atom
+logits `[B, N, C_atom]` and bond logits `[B, E, C_bond]`. The backbone
 uses atom scalars, bond scalars, squared inter-atom distances, relative
 directions, and a sinusoidal scalar timestep embedding. Absolute xyz values are
 never passed to an MLP. Predictions for padded atoms are zero and valid-atom
@@ -221,7 +250,9 @@ predictions are centered per sample.
 Hyperparameters are illustrated in
 `configs/model/equivariant_denoiser.yaml`. Atom and edge feature dimensions
 must match the runtime `Stage3DiffusionState`; their scientific vocabularies
-remain external to the backbone. Optional descriptor conditioning is enabled
+remain external to the backbone. No adjacency or edge-existence head is
+present: chemical bond logits are produced only for the fixed `E` topology
+edges. Optional descriptor conditioning is enabled
 only when `descriptor_dim` is set; the default configuration disables it. The
 backbone has no Pocket Field, diffusion scheduler, noising, loss, or sampling
 dependency.

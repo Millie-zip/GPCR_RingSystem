@@ -17,7 +17,7 @@ from gpcr_ringgen.pipeline import (
     run_stage3_inference_from_config,
 )
 from gpcr_ringgen.pocket import QueryablePocketField
-from gpcr_ringgen.sampling import DDPMStage3Sampler
+from gpcr_ringgen.sampling import JointDDPMStage3Sampler
 from gpcr_ringgen.utils.io import load_yaml_config
 
 
@@ -38,7 +38,7 @@ def test_minimal_pocket_scaffold_pipeline_builds_field_and_calls_sampler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[dict[str, object]] = []
-    original_sample = DDPMStage3Sampler.sample
+    original_sample = JointDDPMStage3Sampler.sample
 
     def tracked_sample(self, stage3_input, denoiser, **kwargs):
         calls.append(
@@ -50,7 +50,7 @@ def test_minimal_pocket_scaffold_pipeline_builds_field_and_calls_sampler(
         )
         return original_sample(self, stage3_input, denoiser, **kwargs)
 
-    monkeypatch.setattr(DDPMStage3Sampler, "sample", tracked_sample)
+    monkeypatch.setattr(JointDDPMStage3Sampler, "sample", tracked_sample)
     output_path = tmp_path / "stage3_output.json"
 
     run = run_stage3_inference(
@@ -87,6 +87,7 @@ def test_minimal_pocket_scaffold_pipeline_builds_field_and_calls_sampler(
     assert payload["pipeline"] == "stage3_independent_inference"
     assert payload["model_weights"] == "random_untrained"
     assert payload["scientific_status"] == "pipeline_smoke_test_only"
+    assert payload["diffusion_mode"] == "joint_chemical"
     assert payload["trajectory_saved"] is False
     assert payload["config_reference"] == str(SMOKE_CONFIG)
     assert payload["samples"][0]["sample_id"] == "stage3-smoke-001"
@@ -96,7 +97,16 @@ def test_minimal_pocket_scaffold_pipeline_builds_field_and_calls_sampler(
         [0, 1, 2],
         [1, 2, 0],
     ]
-    assert payload["samples"][0]["metadata"]["scaffold_source"] == "fixed-mock"
+    assert len(payload["samples"][0]["chemical_labels"]["atom_type_ids"]) == 3
+    assert len(payload["samples"][0]["chemical_labels"]["atom_types"]) == 3
+    assert len(payload["samples"][0]["chemical_labels"]["bond_type_ids"]) == 3
+    assert len(payload["samples"][0]["chemical_labels"]["bond_types"]) == 3
+    assert payload["chemical_vocabulary"]["atom_types"][0] == "C"
+    assert payload["chemical_vocabulary"]["bond_types"][-1] == "AROMATIC"
+    assert (
+        payload["samples"][0]["metadata"]["scaffold_source"]
+        == "fixed-topology-mock"
+    )
     assert payload["config_snapshot"]["diffusion"]["num_timesteps"] == 4
 
 
@@ -109,6 +119,14 @@ def test_pipeline_fixed_seed_is_reproducible(tmp_path: Path) -> None:
         second.sampling_output.coordinates,
     )
     assert torch.equal(first.global_coordinates, second.global_coordinates)
+    assert torch.equal(
+        first.sampling_output.final_state.atom_types,
+        second.sampling_output.final_state.atom_types,
+    )
+    assert torch.equal(
+        first.sampling_output.final_state.bond_types,
+        second.sampling_output.final_state.bond_types,
+    )
 
 
 def test_yaml_entrypoint_runs_without_stage1_or_stage2_models(tmp_path: Path) -> None:
@@ -121,7 +139,10 @@ def test_yaml_entrypoint_runs_without_stage1_or_stage2_models(tmp_path: Path) ->
 
     assert run.output_path == tmp_path / "from_yaml.json"
     assert payload["config_reference"] == str(config_path)
-    assert payload["samples"][0]["metadata"]["scaffold_source"] == "fixed-mock"
+    assert (
+        payload["samples"][0]["metadata"]["scaffold_source"]
+        == "fixed-topology-mock"
+    )
     assert "stage1" not in payload["pipeline"]
     assert "stage2" not in payload["pipeline"]
 
@@ -132,3 +153,11 @@ def test_random_weights_require_explicit_smoke_opt_in(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationError, match="allow_random_weights=true"):
         Stage3InferencePipelineConfig.from_mapping(config)
+
+
+def test_joint_pipeline_rejects_vocabulary_size_mismatch(tmp_path: Path) -> None:
+    config = _config(tmp_path / "rejected_vocabulary.json")
+    config["chemical_vocabulary"]["atom_types"] = ["C", "N"]
+
+    with pytest.raises(ConfigurationError, match="num_atom_types must match"):
+        run_stage3_inference(config)

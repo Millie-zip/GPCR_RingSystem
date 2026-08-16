@@ -218,12 +218,46 @@ def load_stage3_inference_request(
         dtype=dtype,
         device=device,
     )
+    scaffold_atom_type_value = scaffold.get("atom_types")
+    scaffold_bond_type_value = scaffold.get("bond_types")
+    if (scaffold_atom_type_value is None) != (scaffold_bond_type_value is None):
+        raise ConfigurationError(
+            "scaffold.atom_types and scaffold.bond_types must both be present or absent"
+        )
+    scaffold_atom_types = (
+        None
+        if scaffold_atom_type_value is None
+        else _long_tensor(
+            scaffold_atom_type_value,
+            "scaffold.atom_types",
+            device=device,
+        )
+    )
+    scaffold_bond_types = (
+        None
+        if scaffold_bond_type_value is None
+        else _long_tensor(
+            scaffold_bond_type_value,
+            "scaffold.bond_types",
+            device=device,
+        )
+    )
     if atom_features.ndim != 2:
         raise ConfigurationError("scaffold.atom_features must have shape [N, F_atom]")
     if edge_index.ndim != 2 or edge_index.shape[0] != 2:
         raise ConfigurationError("scaffold.edge_index must have shape [2, E]")
     if edge_features.ndim != 2:
         raise ConfigurationError("scaffold.edge_features must have shape [E, F_edge]")
+    if scaffold_atom_types is not None and (
+        scaffold_atom_types.ndim != 1
+        or scaffold_atom_types.shape[0] != atom_features.shape[0]
+    ):
+        raise ConfigurationError("scaffold.atom_types must have shape [N]")
+    if scaffold_bond_types is not None and (
+        scaffold_bond_types.ndim != 1
+        or scaffold_bond_types.shape[0] != edge_index.shape[1]
+    ):
+        raise ConfigurationError("scaffold.bond_types must have shape [E]")
     atom_mask = _bool_tensor(
         scaffold.get("atom_mask"),
         "scaffold.atom_mask",
@@ -241,6 +275,16 @@ def load_stage3_inference_request(
             atom_features=atom_features.unsqueeze(0),
             edge_index=edge_index.unsqueeze(0),
             edge_features=edge_features.unsqueeze(0),
+            atom_types=(
+                None
+                if scaffold_atom_types is None
+                else scaffold_atom_types.unsqueeze(0)
+            ),
+            bond_types=(
+                None
+                if scaffold_bond_types is None
+                else scaffold_bond_types.unsqueeze(0)
+            ),
         ),
         mask=BatchMask(atom_mask=atom_mask, edge_mask=edge_mask),
         metadata=batch_metadata,

@@ -16,14 +16,21 @@ batch transport shapes below.
 
 | Structure | Core tensor shapes | Mask semantics |
 | --- | --- | --- |
-| `MolecularGraph` | atoms `[B, N, F_atom]`, edges `[B, E, F_edge]`, edge index `[B, 2, E]`, optional coordinates `[B, N, 3]` | `atom_mask` and `edge_mask` use `True` for real entries |
+| `MolecularGraph` | atoms `[B, N, F_atom]`, edges `[B, E, F_edge]`, edge index `[B, 2, E]`, optional coordinates `[B, N, 3]`, optional categorical atom/bond labels `[B, N]` / `[B, E]` | `atom_mask` and `edge_mask` use `True` for fixed topology entries |
 | `DescriptorBatch` | values `[B, D]` | `descriptor_mask=True` means the value is present |
 | `PocketBatch` | coordinates `[B, P, 3]`, features `[B, P, F_pocket]` | `pocket_mask=True` means a real pocket point/atom |
-| `Stage3DiffusionState` | graph tensors plus required coordinates, descriptor `[B, D]`, timestep `[B]` | Carries `BatchMask`; padded values must be ignored |
+| `Stage3DiffusionState` | graph tensors, coordinates, optional noisy atom/bond labels, descriptor `[B, D]`, timestep `[B]` | Carries `BatchMask`; topology masks remain frozen and padded values are zero |
 
 Floating feature/coordinate tensors are expected on the active model device.
 `edge_index` and `timestep` use `torch.long`; all masks use `torch.bool`.
 `BatchMetadata` carries one unique sample ID and one metadata mapping per sample.
+
+In `joint_chemical` diffusion mode, topology means the unlabeled fixed graph:
+`N`, `edge_index`, `atom_mask`, `edge_mask`, edge existence, and ring
+connectivity do not change. `atom_types [B, N]`, `bond_types [B, E]` on those
+existing edges, and `coordinates [B, N, 3]` are the generated variables.
+`chemical_vocabulary` records the stable category ordering; the existing-edge
+bond vocabulary deliberately has no `NO_BOND` category.
 
 `Stage2Output` and plain mapping mocks can be adapted with
 `stage2_output_to_stage3_input`. The adapter validates data only; it does not run

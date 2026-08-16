@@ -9,3 +9,5 @@ model:
   epsilon: 1.0e-8
   max_time_period: 10000.0
   descriptor_dim: null
+  num_atom_types: 9
+  num_bond_types: 4

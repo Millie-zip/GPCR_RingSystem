@@ -102,6 +102,16 @@ def initialize_stage3_state(
         ),
         mask=_clone_batch_mask(stage3_input.mask),
         metadata=stage3_input.metadata,
+        atom_types=(
+            None
+            if stage3_input.scaffold.atom_types is None
+            else stage3_input.scaffold.atom_types.clone()
+        ),
+        bond_types=(
+            None
+            if stage3_input.scaffold.bond_types is None
+            else stage3_input.scaffold.bond_types.clone()
+        ),
     )
     state.validate()
     return state
