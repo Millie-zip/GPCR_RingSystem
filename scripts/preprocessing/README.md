@@ -121,3 +121,38 @@ Pipeline order:
 
 Set `GPCR_RINGGEN_DATA_ROOT` to the external production-data directory.
 
+## Pocket-independent 3D training assets
+
+`build_training_3d_assets.py` reads the completed molecule library in SQLite
+read-only mode and writes a separate normalized asset database. It generates
+one heavy-atom `x0 [N,3]` conformer per molecule with the reviewed RDKit
+ETKDGv3 notebook path, then stores one ring/noise-mask record per ring system.
+It does not run docking, pocket alignment, or MMFF/UFF optimization.
+
+Start with the fixed 100-molecule pilot:
+
+```bash
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+python scripts/preprocessing/build_training_3d_assets.py \
+  --source-db /share/home/weiliao02/lyx/zinc_project/5ht2c_3d_diffusion_library_v1/5ht2c_3d_diffusion_library_v1.db \
+  --output-db /share/home/weiliao02/lyx/zinc_project/5ht2c_3d_diffusion_library_v1/training_3d_assets_pilot100.db \
+  --progress-json /share/home/weiliao02/lyx/zinc_project/5ht2c_3d_diffusion_library_v1/training_3d_assets_pilot100.progress.json \
+  --summary-json /share/home/weiliao02/lyx/zinc_project/5ht2c_3d_diffusion_library_v1/training_3d_assets_pilot100.summary.json \
+  --limit 100 \
+  --conformer-timeout-seconds 300 \
+  --heartbeat-seconds 15 \
+  --commit-every 1
+```
+
+Monitor live progress from another terminal:
+
+```bash
+python scripts/preprocessing/watch_stage3_progress.py \
+  /share/home/weiliao02/lyx/zinc_project/5ht2c_3d_diffusion_library_v1/training_3d_assets_pilot100.progress.json \
+  --interval 5
+```
+
+The source database is never attached writable. Existing output is refused by
+default; pass `--resume` only to continue an output database created by this
+builder. Coordinate blobs use little-endian float32 in row-major `[N,3]`
+order. Ring and noise masks use one uint8 byte per source atom.

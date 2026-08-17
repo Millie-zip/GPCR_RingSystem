@@ -10,17 +10,20 @@ from typing import Any
 
 
 def _summary(state: dict[str, Any]) -> str:
-    processed = state.get("processed", 0)
-    limit = state.get("limit") or "?"
+    processed = state.get("processed_molecules", state.get("processed", 0))
+    limit = state.get("requested_limit", state.get("limit")) or "?"
     current = state.get("current_index") or "-"
     molecule = state.get("current_molecule_uid") or "-"
-    elapsed = state.get("phase_elapsed_seconds", 0)
+    elapsed = state.get("phase_elapsed_seconds", state.get("elapsed_seconds", 0))
+    passed = state.get("passed_molecules", state.get("passed", 0))
+    failed = state.get("failed_molecules", state.get("failed", 0))
+    updated = state.get("updated_at_utc", state.get("updated_at"))
+    eta = state.get("estimated_remaining_seconds")
     return (
         f"status={state.get('status')} | completed={processed}/{limit} | "
         f"current={current}/{limit} | phase={state.get('phase')} | "
-        f"phase_seconds={elapsed} | molecule={molecule} | "
-        f"PASS={state.get('passed', 0)} FAIL={state.get('failed', 0)} | "
-        f"updated={state.get('updated_at')}"
+        f"elapsed_seconds={elapsed} | eta_seconds={eta} | molecule={molecule} | "
+        f"PASS={passed} FAIL={failed} | updated={updated}"
     )
 
 
@@ -47,8 +50,9 @@ def main() -> None:
                 "failed",
                 "interrupted",
             }:
-                if state.get("last_error"):
-                    print(f"last_error={state['last_error']}", flush=True)
+                error = state.get("last_error", state.get("message"))
+                if error:
+                    print(f"last_error={error}", flush=True)
                 return
         if args.once:
             return
