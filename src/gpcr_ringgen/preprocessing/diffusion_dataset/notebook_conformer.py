@@ -219,7 +219,27 @@ def generate_notebook_conformer(
         else []
     )
     method = "ETKDGv3"
+    embedding_attempts = [
+        {
+            "method": method,
+            "return_code": return_code,
+            "failure_counts": failure_counts,
+        }
+    ]
 
+    if return_code != 0:
+        with_hydrogens.RemoveAllConformers()
+        return_code = int(
+            AllChem.EmbedMolecule(
+                with_hydrogens,
+                maxAttempts=5000,
+                randomSeed=int(random_seed),
+            )
+        )
+        method = "distance_geometry_max_attempts_5000"
+        embedding_attempts.append(
+            {"method": method, "return_code": return_code}
+        )
     if return_code != 0:
         with_hydrogens.RemoveAllConformers()
         return_code = int(
@@ -230,10 +250,12 @@ def generate_notebook_conformer(
             )
         )
         method = "random_coordinates_fallback"
+        embedding_attempts.append(
+            {"method": method, "return_code": return_code}
+        )
     if return_code != 0 or with_hydrogens.GetNumConformers() != 1:
         raise ConformerGenerationError(
-            f"RDKit embedding failed with return code {return_code}; "
-            f"ETKDG failure counts={failure_counts}"
+            f"RDKit embedding attempts all failed: {embedding_attempts}"
         )
 
     conformer = with_hydrogens.GetConformer()
@@ -262,6 +284,7 @@ def generate_notebook_conformer(
         "mapping_match_count": mapping_count,
         "embedding_method": method,
         "embedding_return_code": return_code,
+        "embedding_attempts": embedding_attempts,
         "etkdg_failure_counts": failure_counts,
         "geometry": _geometry_metrics(molecule, coordinates, source_to_rdkit),
     }

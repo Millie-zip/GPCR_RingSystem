@@ -551,6 +551,7 @@ def build_training_assets(
                         "min_nonbonded": 0.5,
                     },
                     "etkdg_failure_counts": result.get("etkdg_failure_counts", []),
+                    "embedding_attempts": result.get("embedding_attempts", []),
                 }
                 output.execute(
                     """INSERT OR REPLACE INTO molecule_conformers VALUES

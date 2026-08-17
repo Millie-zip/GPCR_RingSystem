@@ -176,11 +176,11 @@
 3. 使用仓库中的 `AllChem.ETKDGv3()`；
 4. 使用固定 `randomSeed = 0xf00d`；
 5. 调用 `EmbedMolecule`，保留 embedding failure 信息；
-6. 主嵌入失败时，仅使用该 notebook 已展示的 `useRandomCoords=True` 路径作为 fallback；
+6. 主嵌入失败时，依次使用该 notebook 已展示的 `maxAttempts=5000` 和 `useRandomCoords=True` 路径；
 7. 只抽取并映射回源数据库中的重原子坐标，新增氢不改变训练图的 `N`；
 8. 不自行增加该仓库没有实际执行的 docking、MMFF/UFF 优化或其他化学算法。
 
-说明：原 notebook 中存在多次重复调用 `EmbedMolecule` 的交互式演示。批处理实现会保留其有效算法含义，即“ETKDGv3 主尝试 + notebook 已有的随机坐标 fallback”，但不会机械重复会覆盖 conformer 的演示单元格。
+说明：原 notebook 中存在多次重复调用 `EmbedMolecule` 的交互式演示。批处理实现会保留其有效算法含义，即“ETKDGv3 主尝试 + `maxAttempts=5000` 重试 + 随机坐标 fallback”，但不会机械重复会覆盖 conformer 的演示单元格。
 
 ## 7. 建议的实施顺序
 
