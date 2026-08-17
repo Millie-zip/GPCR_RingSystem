@@ -63,6 +63,7 @@ class EGNNMessageLayer(nn.Module, EquivariantLayer):
         edge_features: Tensor,
         atom_mask: Tensor,
         edge_mask: Tensor,
+        coordinate_update_mask: Tensor,
     ) -> tuple[Tensor, Tensor]:
         """Apply one vectorized padded-batch equivariant message pass."""
 
@@ -152,9 +153,10 @@ class EGNNMessageLayer(nn.Module, EquivariantLayer):
             + self.node_mlp(torch.cat((flat_nodes, aggregated_messages), dim=-1))
         )
         updated_nodes = updated_nodes * flat_atom_mask.to(updated_nodes.dtype)
-        updated_coordinates = flat_coordinates + coordinate_update * flat_atom_mask.to(
-            coordinate_update.dtype
-        )
+        flat_coordinate_mask = coordinate_update_mask.reshape(flat_size, 1)
+        updated_coordinates = flat_coordinates + coordinate_update * (
+            flat_atom_mask & flat_coordinate_mask
+        ).to(coordinate_update.dtype)
         return (
             updated_nodes.reshape(batch_size, num_atoms, hidden_dim),
             updated_coordinates.reshape(batch_size, num_atoms, 3),

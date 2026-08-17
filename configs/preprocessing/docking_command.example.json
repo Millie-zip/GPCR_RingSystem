@@ -1,0 +1,13 @@
+{
+  "command": [
+    "YOUR_DOCKING_EXECUTABLE",
+    "--receptor",
+    "{receptor_pdb}",
+    "--ligand",
+    "{ligand_sdf}",
+    "--reference",
+    "{reference_pdb}",
+    "--out",
+    "{output_sdf}"
+  ]
+}

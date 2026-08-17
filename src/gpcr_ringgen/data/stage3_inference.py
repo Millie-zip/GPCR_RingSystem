@@ -20,6 +20,7 @@ from gpcr_ringgen.core.types import (
     PocketBatch,
     Stage2Output,
 )
+from gpcr_ringgen.core.vocab import ATOM_TYPE_TO_ID, BOND_TYPE_TO_ID
 from gpcr_ringgen.pocket import PocketAtomMetadata
 
 
@@ -89,6 +90,38 @@ def _long_tensor(
     if tensor.dtype == torch.bool or torch.is_floating_point(tensor):
         raise ConfigurationError(f"{name} must contain integer values")
     return tensor.to(dtype=torch.long)
+
+
+def _categorical_id_tensor(
+    value: object,
+    name: str,
+    *,
+    vocabulary: Mapping[str, int],
+    device: torch.device,
+    allow_empty: bool = False,
+) -> Tensor:
+    values = tuple(_sequence(value, name))
+    if not values and not allow_empty:
+        raise ConfigurationError(f"{name} must contain at least one entry")
+    if all(isinstance(item, str) for item in values):
+        unsupported = sorted({item for item in values if item not in vocabulary})
+        if unsupported:
+            raise ConfigurationError(
+                f"{name} contains unsupported categories: {', '.join(unsupported)}"
+            )
+        identifiers = [vocabulary[item] for item in values]
+    elif all(isinstance(item, int) and not isinstance(item, bool) for item in values):
+        identifiers = list(values)
+        vocabulary_size = len(vocabulary)
+        if any(item < 0 or item >= vocabulary_size for item in identifiers):
+            raise ConfigurationError(
+                f"{name} category IDs must be in [0, {vocabulary_size - 1}]"
+            )
+    else:
+        raise ConfigurationError(
+            f"{name} must contain either category strings or integer IDs"
+        )
+    return torch.tensor(identifiers, dtype=torch.long, device=device)
 
 
 @dataclass(frozen=True)
@@ -207,10 +240,23 @@ def load_stage3_inference_request(
         dtype=dtype,
         device=device,
     )
+    atom_types = _categorical_id_tensor(
+        scaffold.get("atom_types"),
+        "scaffold.atom_types",
+        vocabulary=ATOM_TYPE_TO_ID,
+        device=device,
+    )
     edge_index = _long_tensor(
         scaffold.get("edge_index"),
         "scaffold.edge_index",
         device=device,
+    )
+    bond_types = _categorical_id_tensor(
+        scaffold.get("bond_types"),
+        "scaffold.bond_types",
+        vocabulary=BOND_TYPE_TO_ID,
+        device=device,
+        allow_empty=True,
     )
     edge_features = _float_tensor(
         scaffold.get("edge_features"),
@@ -218,12 +264,24 @@ def load_stage3_inference_request(
         dtype=dtype,
         device=device,
     )
+    coordinates = _float_tensor(
+        scaffold.get("coordinates"),
+        "scaffold.coordinates",
+        dtype=dtype,
+        device=device,
+    )
     if atom_features.ndim != 2:
         raise ConfigurationError("scaffold.atom_features must have shape [N, F_atom]")
+    if tuple(atom_types.shape) != (atom_features.shape[0],):
+        raise ConfigurationError("scaffold.atom_types must have shape [N]")
     if edge_index.ndim != 2 or edge_index.shape[0] != 2:
         raise ConfigurationError("scaffold.edge_index must have shape [2, E]")
     if edge_features.ndim != 2:
         raise ConfigurationError("scaffold.edge_features must have shape [E, F_edge]")
+    if tuple(bond_types.shape) != (edge_index.shape[1],):
+        raise ConfigurationError("scaffold.bond_types must have shape [E]")
+    if tuple(coordinates.shape) != (atom_features.shape[0], 3):
+        raise ConfigurationError("scaffold.coordinates must have shape [N, 3]")
     atom_mask = _bool_tensor(
         scaffold.get("atom_mask"),
         "scaffold.atom_mask",
@@ -236,13 +294,26 @@ def load_stage3_inference_request(
         size=edge_index.shape[1],
         device=device,
     )
+    diffusion_mask = _bool_tensor(
+        scaffold.get("diffusion_mask"),
+        "scaffold.diffusion_mask",
+        size=atom_features.shape[0],
+        device=device,
+    )
     stage2_output = Stage2Output(
         scaffold=MolecularGraph(
             atom_features=atom_features.unsqueeze(0),
+            atom_types=atom_types.unsqueeze(0),
             edge_index=edge_index.unsqueeze(0),
+            bond_types=bond_types.unsqueeze(0),
             edge_features=edge_features.unsqueeze(0),
+            coordinates=coordinates.unsqueeze(0),
         ),
-        mask=BatchMask(atom_mask=atom_mask, edge_mask=edge_mask),
+        mask=BatchMask(
+            atom_mask=atom_mask,
+            edge_mask=edge_mask,
+            diffusion_mask=diffusion_mask,
+        ),
         metadata=batch_metadata,
     )
 

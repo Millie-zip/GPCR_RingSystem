@@ -33,15 +33,15 @@ def _validate_atom_tensor(name: str, values: Tensor, state: Stage3DiffusionState
         raise ValueError(f"{name} contains NaN or Inf")
 
 
-def project_zero_center_of_mass(values: Tensor, atom_mask: Tensor) -> Tensor:
-    """Remove per-sample translation using only valid ligand atoms.
+def project_zero_center_of_mass(values: Tensor, selection_mask: Tensor) -> Tensor:
+    """Remove per-sample translation using only selected atoms.
 
     Args:
         values: Shape ``[B, N, 3]``; floating-point on the active model device.
             It may represent coordinates, sampled noise, or predicted noise.
-        atom_mask: Shape ``[B, N]``; ``torch.bool`` on the same device.
-            ``True`` positions define atoms included in the center; ``False``
-            positions are padding and are returned as exact zeros.
+        selection_mask: Shape ``[B, N]``; ``torch.bool`` on the same device.
+            ``True`` positions define values included in the center; ``False``
+            positions are returned as exact zeros.
 
     Returns:
         Shape ``[B, N, 3]`` with the input dtype/device. Every sample's valid
@@ -52,23 +52,35 @@ def project_zero_center_of_mass(values: Tensor, atom_mask: Tensor) -> Tensor:
         raise ValueError("values must be a torch.Tensor with shape [B, N, 3]")
     if not torch.is_floating_point(values):
         raise TypeError("values must use a floating-point dtype")
-    if not isinstance(atom_mask, Tensor) or atom_mask.ndim != 2:
-        raise ValueError("atom_mask must be a torch.Tensor with shape [B, N]")
-    if tuple(atom_mask.shape) != tuple(values.shape[:2]):
-        raise ValueError("atom_mask shape must match values [B, N]")
-    if atom_mask.dtype != torch.bool:
-        raise TypeError("atom_mask must have dtype torch.bool")
-    if atom_mask.device != values.device:
-        raise ValueError("atom_mask and values must be on the same device")
+    if not isinstance(selection_mask, Tensor) or selection_mask.ndim != 2:
+        raise ValueError("selection_mask must be a torch.Tensor with shape [B, N]")
+    if tuple(selection_mask.shape) != tuple(values.shape[:2]):
+        raise ValueError("selection_mask shape must match values [B, N]")
+    if selection_mask.dtype != torch.bool:
+        raise TypeError("selection_mask must have dtype torch.bool")
+    if selection_mask.device != values.device:
+        raise ValueError("selection_mask and values must be on the same device")
     if not bool(torch.isfinite(values).all()):
         raise ValueError("values contain NaN or Inf")
 
-    weights = atom_mask.unsqueeze(-1).to(values.dtype)
+    weights = selection_mask.unsqueeze(-1).to(values.dtype)
     counts = weights.sum(dim=1, keepdim=True)
     if bool((counts == 0).any()):
         raise ValueError("Every sample must contain at least one valid atom")
     center = (values * weights).sum(dim=1, keepdim=True) / counts
     return (values - center) * weights
+
+
+def prepare_diffusion_values(values: Tensor, state: Stage3DiffusionState) -> Tensor:
+    """Mask fixed atoms and center only samples without a fixed coordinate anchor."""
+
+    diffusion_mask = state.mask.diffusion_mask
+    masked = values * diffusion_mask.unsqueeze(-1).to(values.dtype)
+    centered = project_zero_center_of_mass(values, diffusion_mask)
+    has_fixed_anchor = (
+        state.mask.atom_mask & ~diffusion_mask
+    ).any(dim=1, keepdim=True).unsqueeze(-1)
+    return torch.where(has_fixed_anchor, masked, centered)
 
 
 def sample_timesteps(
@@ -122,7 +134,7 @@ def sample_coordinate_noise(
         device=state.coordinates.device,
         generator=generator,
     )
-    return project_zero_center_of_mass(noise, state.mask.atom_mask)
+    return prepare_diffusion_values(noise, state)
 
 
 @dataclass(frozen=True)
@@ -134,8 +146,8 @@ class ForwardDiffusionOutput:
             model device. Valid atoms contain ``x_t`` and padded atoms are zero.
         clean_coordinates: Shape ``[B, N, 3]``; same dtype/device. This is the
             input ``x_0`` after valid-atom center-of-mass removal. Padding is zero.
-        noise: Shape ``[B, N, 3]``; same dtype/device. This is the centered
-            epsilon prediction target. Padding is zero.
+        noise: Shape ``[B, N, 3]``; same dtype/device. This is the masked
+            epsilon target. Fixed ring atoms and padding are zero.
         timestep: Available as ``noisy_state.timestep``, shape ``[B]`` and
             ``torch.long``. Atom validity follows ``noisy_state.mask.atom_mask``.
     """
@@ -175,20 +187,19 @@ def q_sample(
     noise: Tensor | None = None,
     generator: torch.Generator | None = None,
 ) -> ForwardDiffusionOutput:
-    r"""Sample ``q(x_t | x_0)`` for centered ligand coordinates.
+    r"""Sample ``q(x_t | x_0)`` only for atoms outside the frozen ring.
 
     The conventional DDPM equation is
     ``x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1-alpha_bar_t) * epsilon``.
-    Before applying it, both ``x_0`` and epsilon are projected onto the
-    zero-center-of-mass subspace defined by ``atom_mask``. This removes the
-    arbitrary global translation mode and sets padded atoms to zero.
+    The equation is applied only where ``diffusion_mask=True``. Ring atoms
+    retain their clean pocket-local coordinates exactly; padding remains zero.
 
     Args:
         state: Clean Stage 3 state with coordinates shaped ``[B, N, 3]``.
         timestep: Shape ``[B]``; ``torch.long`` on the state device.
         schedule: Validated DDPM schedule.
         noise: Optional explicit epsilon shaped ``[B, N, 3]`` with the state
-            dtype/device. It is centered by this function before use.
+            dtype/device. It is masked by this function before use.
         generator: Optional local generator used only when ``noise`` is absent.
     """
 
@@ -209,16 +220,20 @@ def q_sample(
         centered_noise = sample_coordinate_noise(state, generator=generator)
     else:
         _validate_atom_tensor("noise", noise, state)
-        centered_noise = project_zero_center_of_mass(noise, state.mask.atom_mask)
+        centered_noise = prepare_diffusion_values(noise, state)
 
-    clean_coordinates = project_zero_center_of_mass(
-        state.coordinates,
-        state.mask.atom_mask,
-    )
+    atom_mask = state.mask.atom_mask.unsqueeze(-1)
+    diffusion_mask = state.mask.diffusion_mask.unsqueeze(-1)
+    clean_coordinates = state.coordinates * atom_mask.to(state.coordinates.dtype)
     coordinate_mask = state.mask.atom_mask.unsqueeze(-1).to(state.coordinates.dtype)
-    noisy_coordinates = (
+    diffused_coordinates = (
         signal_coefficient * clean_coordinates
         + noise_coefficient * centered_noise
+    )
+    noisy_coordinates = torch.where(
+        diffusion_mask,
+        diffused_coordinates,
+        clean_coordinates,
     ) * coordinate_mask
     noisy_state = replace(
         state,
@@ -257,6 +272,7 @@ def training_target(
 __all__ = [
     "DiffusionTransition",
     "ForwardDiffusionOutput",
+    "prepare_diffusion_values",
     "project_zero_center_of_mass",
     "q_sample",
     "sample_coordinate_noise",

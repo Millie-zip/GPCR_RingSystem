@@ -16,7 +16,7 @@ from gpcr_ringgen.core.types import (
 from gpcr_ringgen.models.diffusion import (
     DDPMNoiseSchedule,
     initialize_stage3_state,
-    project_zero_center_of_mass,
+    prepare_diffusion_values,
 )
 from gpcr_ringgen.models.equivariant import DenoiserOutput
 from gpcr_ringgen.pocket import (
@@ -65,7 +65,7 @@ class ReverseDiffusionStepOutput:
             ``x_0`` estimate when ``t=0``); padded atoms are exactly zero.
         posterior_mean: Shape ``[B, N, 3]``; same dtype/device. The epsilon
             parameterized DDPM mean before stochastic posterior noise. Padding
-            is zero and the valid-atom center of mass is zero.
+            is zero; fixed ring and padded rows are unchanged/zero.
         posterior_variance: Shape ``[B, 1, 1]``; same dtype/device. Values are
             non-negative. The value is zero for samples at ``t=0``.
     """
@@ -117,13 +117,13 @@ def ddpm_reverse_step(
 
     The posterior mean is
     ``mu = alpha_t^-1/2 * (x_t - beta_t / sqrt(1-alpha_bar_t) * epsilon)``.
-    For ``t>0``, centered Gaussian noise is scaled by posterior variance
+    For ``t>0``, masked Gaussian noise is scaled by posterior variance
     ``beta_t * (1-alpha_bar_{t-1}) / (1-alpha_bar_t)``. For ``t=0`` the
     variance is zero and the mean is returned directly.
 
-    Coordinates, predicted noise, and stochastic noise are projected into the
-    valid-atom zero-center-of-mass subspace. Thus padding is never updated and
-    global ligand translation is never sampled.
+    Only ``diffusion_mask=True`` atoms are updated. Ring atoms retain their
+    pocket-local coordinates exactly at every reverse step, while padding stays
+    zero. Noise on the diffused subset has its translation mode removed.
     """
 
     if not isinstance(state, Stage3DiffusionState):
@@ -138,14 +138,10 @@ def ddpm_reverse_step(
             f"state timestep values must be below {schedule.num_timesteps}"
         )
 
-    coordinates = project_zero_center_of_mass(
-        state.coordinates,
-        state.mask.atom_mask,
-    )
-    epsilon = project_zero_center_of_mass(
-        predicted_noise,
-        state.mask.atom_mask,
-    )
+    atom_mask = state.mask.atom_mask.unsqueeze(-1)
+    diffusion_mask = state.mask.diffusion_mask.unsqueeze(-1)
+    coordinates = state.coordinates * atom_mask.to(state.coordinates.dtype)
+    epsilon = prepare_diffusion_values(predicted_noise, state)
     beta_t = _extract_schedule_value(schedule.betas, timestep, coordinates)
     alpha_t = _extract_schedule_value(schedule.alphas, timestep, coordinates)
     alpha_bar_t = _extract_schedule_value(
@@ -166,13 +162,18 @@ def ddpm_reverse_step(
         alpha_bar_previous,
     )
 
-    posterior_mean = torch.rsqrt(alpha_t) * (
+    diffused_posterior_mean = torch.rsqrt(alpha_t) * (
         coordinates
         - beta_t / torch.sqrt(1.0 - alpha_bar_t) * epsilon
     )
-    posterior_mean = project_zero_center_of_mass(
-        posterior_mean,
-        state.mask.atom_mask,
+    diffused_posterior_mean = prepare_diffusion_values(
+        diffused_posterior_mean,
+        state,
+    )
+    posterior_mean = torch.where(
+        diffusion_mask,
+        diffused_posterior_mean,
+        coordinates,
     )
     posterior_variance = beta_t * (1.0 - alpha_bar_previous) / (
         1.0 - alpha_bar_t
@@ -189,20 +190,16 @@ def ddpm_reverse_step(
         device=coordinates.device,
         generator=generator,
     )
-    stochastic_noise = project_zero_center_of_mass(
-        stochastic_noise,
-        state.mask.atom_mask,
-    )
+    stochastic_noise = prepare_diffusion_values(stochastic_noise, state)
     sampled_coordinates = posterior_mean + torch.sqrt(
         posterior_variance
     ) * stochastic_noise
-    sampled_coordinates = project_zero_center_of_mass(
+    sampled_coordinates = torch.where(
+        diffusion_mask,
         sampled_coordinates,
-        state.mask.atom_mask,
+        coordinates,
     )
-    # The terminal t=0 transition is deterministic. Selecting the already
-    # centered mean also avoids an unnecessary second projection and its
-    # possible last-bit floating-point perturbation.
+    # The terminal t=0 transition is deterministic.
     previous_coordinates = torch.where(
         at_initial_step,
         posterior_mean,
@@ -229,7 +226,8 @@ class Stage3SamplingOutput:
     Tensor fields:
         coordinates: Shape ``[B, N, 3]`` through ``final_state`` and ``graph``;
             floating-point on the model device. Valid atoms are generated local
-            coordinates with zero center of mass. Padded atoms are zero.
+            coordinates. Fixed ring atoms retain their input positions and
+            padded atoms are zero.
         graph.atom_features: Shape ``[B, N, F_atom]``; unchanged scaffold
             features. ``graph.edge_index`` is ``[B, 2, E]`` and
             ``graph.edge_features`` is ``[B, E, F_edge]``; topology is unchanged.
@@ -264,7 +262,9 @@ class Stage3SamplingOutput:
         state = self.final_state
         for name, graph_tensor, state_tensor in (
             ("atom_features", self.graph.atom_features, state.atom_features),
+            ("atom_types", self.graph.atom_types, state.atom_types),
             ("edge_index", self.graph.edge_index, state.edge_index),
+            ("bond_types", self.graph.bond_types, state.bond_types),
             ("edge_features", self.graph.edge_features, state.edge_features),
             ("coordinates", self.graph.coordinates, state.coordinates),
         ):
@@ -342,7 +342,7 @@ class DDPMStage3Sampler:
             denoiser: Trained-compatible base or Field-conditioned module that
                 returns :class:`DenoiserOutput`. Randomly initialized weights
                 are valid only for structural smoke tests.
-            seed: Controls both centered ``X_T`` initialization and all reverse
+            seed: Controls both masked ``X_T`` initialization and all reverse
                 posterior noise through local generators. Global RNG state is
                 not changed.
             pocket_field: Optional stable query field. Required by an additive
@@ -425,7 +425,9 @@ class DDPMStage3Sampler:
 
         graph = MolecularGraph(
             atom_features=state.atom_features,
+            atom_types=state.atom_types,
             edge_index=state.edge_index,
+            bond_types=state.bond_types,
             edge_features=state.edge_features,
             coordinates=state.coordinates,
         )

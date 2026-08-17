@@ -13,6 +13,7 @@ from gpcr_ringgen.models.diffusion.state import (
 )
 from gpcr_ringgen.models.diffusion.transitions import (
     ForwardDiffusionOutput,
+    prepare_diffusion_values,
     project_zero_center_of_mass,
     q_sample,
     sample_coordinate_noise,
@@ -29,6 +30,7 @@ __all__ = [
     "Stage3DiffusionState",
     "initialize_stage3_state",
     "load_ddpm_config",
+    "prepare_diffusion_values",
     "project_zero_center_of_mass",
     "q_sample",
     "sample_coordinate_noise",

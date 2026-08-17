@@ -89,10 +89,11 @@ The Dummy Pipeline writes an inspectable placeholder result to `outputs/dummy_sa
 ## Stage 3 three-dimensional initialization
 
 `initialize_stage3_state(stage3_input, seed=..., timestep=0)` converts the
-existing padded Stage 3 input into `Stage3DiffusionState`. For every sample it
-draws valid ligand atom coordinates from isotropic `N(0, I_3)`, subtracts the
-valid-atom center, and sets padded coordinates to zero. The result shape is
-`[B, N, 3]` with the scaffold atom-feature dtype/device.
+existing padded Stage 3 input into `Stage3DiffusionState`. The required
+`diffusion_mask [B,N]` is `False` for fixed ring atoms and padding and `True`
+only for ring-external atoms. Fixed ring atoms copy their pocket-local input
+coordinates exactly; only ring-external atoms are initialized from isotropic
+`N(0, I_3)`. Padding coordinates are zero.
 
 Pass the existing top-level experiment `seed` value to this function. A local
 PyTorch generator makes repeated calls with the same input and seed
@@ -105,14 +106,15 @@ timestep.
 `DDPMNoiseSchedule`, `sample_timesteps(...)`, and `q_sample(...)` implement the
 training-side DDPM process
 `x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * epsilon`. The current
-prediction type is `epsilon`; `training_target(...)` returns the exact centered
+prediction type is `epsilon`; `training_target(...)` returns the exact masked
 noise used to construct `x_t`. Timesteps are zero-based, and `t=0` is the
 weakest configured noising step rather than a separate clean-state sentinel.
 
-Both the input coordinates and sampled Gaussian noise are centered per sample
-using valid ligand atoms only. Padded coordinate rows are zero. The
-`NoisePredictionLoss` computes MSE only where `atom_mask=True`, with `mean`
-reduction dividing by three times the number of valid atoms.
+The DDPM equation is applied only where `diffusion_mask=True`; ring coordinates
+are copied unchanged. Gaussian noise is zero for ring atoms and padding. Samples
+without any fixed coordinate anchor retain the legacy centering behavior.
+`NoisePredictionLoss` computes MSE
+only where `diffusion_mask=True`.
 
 The example `configs/diffusion/ddpm.yaml` exposes:
 
@@ -130,7 +132,7 @@ implemented separately from the training-side API.
 ## Stage 3 reverse diffusion sampling
 
 `DDPMStage3Sampler(schedule).sample(stage3_input, denoiser, seed=...)` starts
-from the existing centered Gaussian Stage 3 initialization and applies every
+from the masked Gaussian Stage 3 initialization and applies every
 reverse timestep from `T-1` through `0`. It uses the same epsilon-prediction and
 linear-beta schedule configured by `configs/diffusion/ddpm.yaml`; DDIM or other
 sampler formulas are not mixed into this path.
@@ -143,8 +145,9 @@ For a model prediction `epsilon_theta`, one reverse step uses:
     x_(t-1) = mu_t + sqrt(beta_tilde_t) * z       when t > 0
     x_0     = mu_0                                 when t = 0
 
-Coordinates, predicted noise, and posterior noise are kept in the valid-atom
-zero-center-of-mass subspace. Padded atoms remain zero at every step. The
+Only ring-external atoms are updated. Noise is masked by `diffusion_mask`;
+fixed ring atoms retain their pocket-local coordinates
+exactly and padding remains zero at every step. The
 sampler temporarily calls `model.eval()`, runs under `torch.no_grad()`, and
 restores the model's previous training/evaluation state afterward.
 
@@ -181,8 +184,10 @@ Its orchestration is deliberately thin:
 
 `examples/inputs/stage3_smoke.json` is the standard single-sample input
 example. It contains global pocket coordinates and annotations, a fixed/mock
-scaffold represented by atom features plus bond topology, a descriptor vector,
-masks, a sample ID, and metadata. The loader only converts this JSON to the
+scaffold represented by coordinates, continuous features, categorical
+atom/bond types, bond topology, and an explicit `diffusion_mask` (`false` ring,
+`true` ring-external), plus a descriptor vector, masks, sample ID, and metadata.
+The loader only converts this JSON to the
 existing project contracts; it does not calculate descriptors or call a Stage
 1/Stage 2 model.
 
@@ -202,8 +207,13 @@ pipeline_smoke_test_only`. A checkpoint must contain the configured
 `FieldConditionedEquivariantDenoiser` state dict, either directly or under
 `model_state_dict` / `state_dict`.
 
+Checkpoints created before categorical atom/bond embeddings were introduced do
+not contain the required embedding weights and are intentionally incompatible
+with the frozen categorical schema. Train-branch checkpoints must record the
+vocabulary/config snapshot used to build their inputs.
+
 The JSON output contains the sample ID, padded local and restored global
-coordinates, atom mask, fixed atom/bond topology, descriptor and mask,
+coordinates, atom and diffusion masks, fixed atom/bond topology, descriptor and mask,
 metadata, pocket transform center, Field channel order, seed, checkpoint
 status, and a complete configuration snapshot/reference. Trajectory is omitted
 by default. The project has no reliable SDF/MOL reconstruction writer, so this

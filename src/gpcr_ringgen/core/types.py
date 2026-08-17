@@ -9,6 +9,8 @@ from typing import Any, Protocol, runtime_checkable
 import torch
 from torch import Tensor
 
+from gpcr_ringgen.core.vocab import ATOM_TYPE_COUNT, BOND_TYPE_COUNT
+
 
 def _require_rank(name: str, tensor: Tensor, rank: int) -> None:
     if not isinstance(tensor, Tensor):
@@ -27,6 +29,22 @@ def _require_floating(name: str, tensor: Tensor) -> None:
 def _require_bool(name: str, tensor: Tensor) -> None:
     if tensor.dtype != torch.bool:
         raise TypeError(f"{name} must have dtype torch.bool, got {tensor.dtype}.")
+
+
+def _require_categorical_ids(
+    name: str,
+    tensor: Tensor,
+    *,
+    vocabulary_size: int,
+) -> None:
+    _require_rank(name, tensor, 2)
+    if tensor.dtype != torch.long:
+        raise TypeError(f"{name} must have dtype torch.long, got {tensor.dtype}.")
+    if bool(((tensor < 0) | (tensor >= vocabulary_size)).any()):
+        raise ValueError(
+            f"{name} contains an unsupported category ID; expected values in "
+            f"[0, {vocabulary_size - 1}]."
+        )
 
 
 def _validate_edge_references(
@@ -103,8 +121,12 @@ class MolecularGraph:
     Tensor fields:
         atom_features: Shape ``[B, N, F_atom]``; floating-point; expected on the
             active model device. Rows with ``atom_mask=False`` are padding.
+        atom_types: Shape ``[B, N]``; ``torch.long``; frozen element IDs. The
+            atom mask excludes padding ID 0 from computation.
         edge_index: Shape ``[B, 2, E]``; ``torch.long``; same device as the
             features. Entries with ``edge_mask=False`` are padding and ignored.
+        bond_types: Shape ``[B, E]``; ``torch.long``; frozen bond-type IDs. The
+            edge mask excludes padding ID 0 from computation.
         edge_features: Shape ``[B, E, F_edge]``; floating-point; same device and
             dtype as ``atom_features``. Rows with ``edge_mask=False`` are padding.
         coordinates: Optional shape ``[B, N, 3]``; floating-point; same device
@@ -115,7 +137,9 @@ class MolecularGraph:
     """
 
     atom_features: Tensor
+    atom_types: Tensor
     edge_index: Tensor
+    bond_types: Tensor
     edge_features: Tensor
     coordinates: Tensor | None = None
 
@@ -126,7 +150,17 @@ class MolecularGraph:
     def validate(self) -> None:
         """Validate graph ranks, aligned dimensions, dtypes, and devices."""
         _require_rank("atom_features", self.atom_features, 3)
+        _require_categorical_ids(
+            "atom_types",
+            self.atom_types,
+            vocabulary_size=ATOM_TYPE_COUNT,
+        )
         _require_rank("edge_index", self.edge_index, 3)
+        _require_categorical_ids(
+            "bond_types",
+            self.bond_types,
+            vocabulary_size=BOND_TYPE_COUNT,
+        )
         _require_rank("edge_features", self.edge_features, 3)
         _require_floating("atom_features", self.atom_features)
         _require_floating("edge_features", self.edge_features)
@@ -148,9 +182,15 @@ class MolecularGraph:
             raise ValueError("edge_features dimension F_edge must be positive.")
         if batch_size != edge_batch:
             raise ValueError("Atom and edge batch sizes differ.")
+        if tuple(self.atom_types.shape) != (batch_size, num_atoms):
+            raise ValueError("atom_types must have shape [B, N].")
+        if tuple(self.bond_types.shape) != (batch_size, num_edges):
+            raise ValueError("bond_types must have shape [B, E].")
 
         tensors = {
+            "atom_types": self.atom_types,
             "edge_index": self.edge_index,
+            "bond_types": self.bond_types,
             "edge_features": self.edge_features,
         }
         if self.coordinates is not None:
@@ -242,6 +282,10 @@ class BatchMask:
             ``False`` means padding; expected on the graph tensor device.
         edge_mask: Shape ``[B, E]``; ``torch.bool``; ``True`` means a real edge,
             ``False`` means padding; expected on the graph tensor device.
+        diffusion_mask: Optional shape ``[B, N]``; ``torch.bool``; ``True``
+            means the atom is outside the frozen ring system and its coordinates
+            participate in diffusion. ``False`` means a fixed ring atom or
+            padding. Stage 3 requires this mask explicitly.
         descriptor_mask: Optional shape ``[B, D]``; ``torch.bool``; ``True`` means
             the descriptor value is present, ``False`` means missing/padding;
             expected on the same device as ``atom_mask``.
@@ -252,6 +296,7 @@ class BatchMask:
 
     atom_mask: Tensor
     edge_mask: Tensor
+    diffusion_mask: Tensor | None = None
     descriptor_mask: Tensor | None = None
     pocket_mask: Tensor | None = None
 
@@ -267,6 +312,7 @@ class BatchMask:
         masks = {
             "atom_mask": self.atom_mask,
             "edge_mask": self.edge_mask,
+            "diffusion_mask": self.diffusion_mask,
             "descriptor_mask": self.descriptor_mask,
             "pocket_mask": self.pocket_mask,
         }
@@ -345,6 +391,11 @@ class Stage2Output:
             raise ValueError("atom_mask shape must match scaffold [B, N].")
         if tuple(self.mask.edge_mask.shape) != (batch_size, num_edges):
             raise ValueError("edge_mask shape must match scaffold [B, E].")
+        if self.mask.diffusion_mask is not None:
+            if tuple(self.mask.diffusion_mask.shape) != (batch_size, num_atoms):
+                raise ValueError("diffusion_mask shape must match scaffold [B, N].")
+            if bool((self.mask.diffusion_mask & ~self.mask.atom_mask).any()):
+                raise ValueError("diffusion_mask must be a subset of atom_mask.")
         if self.mask.device != self.scaffold.atom_features.device:
             raise ValueError("Stage 2 masks and scaffold tensors must share a device.")
         self.metadata.validate(batch_size)
@@ -388,6 +439,10 @@ class Stage3Input:
             raise ValueError("Scaffold, descriptor, and pocket batch sizes must match.")
         expected_shapes = {
             "atom_mask": ((batch_size, num_atoms), self.mask.atom_mask),
+            "diffusion_mask": (
+                (batch_size, num_atoms),
+                self.mask.diffusion_mask,
+            ),
             "edge_mask": ((batch_size, num_edges), self.mask.edge_mask),
             "descriptor_mask": (
                 (batch_size, descriptor_dim),
@@ -401,6 +456,12 @@ class Stage3Input:
         for name, (expected, actual) in expected_shapes.items():
             if actual is None or tuple(actual.shape) != expected:
                 raise ValueError(f"{name} shape must be {list(expected)}.")
+        if bool((self.mask.atom_mask.sum(dim=1) == 0).any()):
+            raise ValueError("Every sample must contain at least one valid ligand atom.")
+        if bool((self.mask.diffusion_mask & ~self.mask.atom_mask).any()):
+            raise ValueError("diffusion_mask must be a subset of atom_mask.")
+        if bool((self.mask.diffusion_mask.sum(dim=1) == 0).any()):
+            raise ValueError("Every Stage 3 sample must contain an atom to diffuse.")
 
         tensors = {
             "descriptor.values": self.descriptor.values,
@@ -428,8 +489,12 @@ class Stage3DiffusionState:
     Tensor fields:
         atom_features: Shape ``[B, N, F_atom]``; floating-point; model device.
             Rows with ``atom_mask=False`` are padding and must be ignored.
+        atom_types: Shape ``[B, N]``; ``torch.long`` categorical element IDs;
+            padding ID 0 is ignored through ``atom_mask``.
         edge_index: Shape ``[B, 2, E]``; ``torch.long``; model device. Entries
             with ``edge_mask=False`` are padding and ignored.
+        bond_types: Shape ``[B, E]``; ``torch.long`` categorical bond IDs;
+            padding ID 0 is ignored through ``edge_mask``.
         edge_features: Shape ``[B, E, F_edge]``; floating-point; model device.
             Rows with ``edge_mask=False`` are padding.
         coordinates: Shape ``[B, N, 3]``; floating-point; model device. Rows
@@ -441,7 +506,9 @@ class Stage3DiffusionState:
     """
 
     atom_features: Tensor
+    atom_types: Tensor
     edge_index: Tensor
+    bond_types: Tensor
     edge_features: Tensor
     coordinates: Tensor
     descriptor: Tensor
@@ -458,7 +525,9 @@ class Stage3DiffusionState:
             raise ValueError("Stage3DiffusionState coordinates are required.")
         graph = MolecularGraph(
             atom_features=self.atom_features,
+            atom_types=self.atom_types,
             edge_index=self.edge_index,
+            bond_types=self.bond_types,
             edge_features=self.edge_features,
             coordinates=self.coordinates,
         )
@@ -483,6 +552,14 @@ class Stage3DiffusionState:
             raise ValueError("descriptor must be on the graph device.")
         if tuple(self.mask.atom_mask.shape) != tuple(self.atom_features.shape[:2]):
             raise ValueError("atom_mask shape must match atom_features [B, N].")
+        if self.mask.diffusion_mask is None or tuple(
+            self.mask.diffusion_mask.shape
+        ) != tuple(self.atom_features.shape[:2]):
+            raise ValueError("diffusion_mask shape must match atom_features [B, N].")
+        if bool((self.mask.diffusion_mask & ~self.mask.atom_mask).any()):
+            raise ValueError("diffusion_mask must be a subset of atom_mask.")
+        if bool((self.mask.diffusion_mask.sum(dim=1) == 0).any()):
+            raise ValueError("Every diffusion state must contain an atom to diffuse.")
         if tuple(self.mask.edge_mask.shape) != (
             self.batch_size,
             self.edge_features.shape[1],

@@ -13,6 +13,7 @@ import torch
 from torch import Tensor, nn
 
 from gpcr_ringgen.core.types import Stage3DiffusionState
+from gpcr_ringgen.core.vocab import ATOM_TYPE_COUNT, BOND_TYPE_COUNT
 from gpcr_ringgen.models.embeddings import SinusoidalTimestepEmbedding
 from gpcr_ringgen.models.equivariant.layers import EGNNMessageLayer
 from gpcr_ringgen.utils.io import load_yaml_config
@@ -56,6 +57,8 @@ class EquivariantDenoiserConfig:
     epsilon: float
     max_time_period: float
     descriptor_dim: int | None = None
+    atom_type_vocab_size: int = ATOM_TYPE_COUNT
+    bond_type_vocab_size: int = BOND_TYPE_COUNT
 
     def __post_init__(self) -> None:
         for name in (
@@ -82,9 +85,17 @@ class EquivariantDenoiserConfig:
                 "descriptor_dim",
                 _positive_int("descriptor_dim", self.descriptor_dim),
             )
+        if self.atom_type_vocab_size != ATOM_TYPE_COUNT:
+            raise ValueError(
+                f"atom_type_vocab_size must be {ATOM_TYPE_COUNT} for the frozen schema"
+            )
+        if self.bond_type_vocab_size != BOND_TYPE_COUNT:
+            raise ValueError(
+                f"bond_type_vocab_size must be {BOND_TYPE_COUNT} for the frozen schema"
+            )
 
     @classmethod
-    def from_mapping(cls, config: Mapping[str, Any]) -> "EquivariantDenoiserConfig":
+    def from_mapping(cls, config: Mapping[str, Any]) -> EquivariantDenoiserConfig:
         model_config = config.get("model", config)
         if not isinstance(model_config, Mapping):
             raise TypeError("model config must be a mapping")
@@ -107,7 +118,16 @@ class EquivariantDenoiserConfig:
         missing = [name for name in required if name not in model_config]
         if missing:
             raise KeyError(f"missing denoiser config keys: {', '.join(missing)}")
-        return cls(**{name: model_config[name] for name in required})
+        values = {name: model_config[name] for name in required}
+        values["atom_type_vocab_size"] = model_config.get(
+            "atom_type_vocab_size",
+            ATOM_TYPE_COUNT,
+        )
+        values["bond_type_vocab_size"] = model_config.get(
+            "bond_type_vocab_size",
+            BOND_TYPE_COUNT,
+        )
+        return cls(**values)
 
 
 def load_equivariant_denoiser_config(
@@ -125,7 +145,8 @@ class DenoiserOutput:
     Tensor fields:
         coordinate_noise: Shape ``[B, N, 3]``; floating-point; same dtype and
             device as input coordinates. Rows with ``atom_mask=False`` are
-            exactly zero and must be ignored.
+            exactly zero and must be ignored. Fixed ring rows where
+            ``diffusion_mask=False`` are also exactly zero.
     """
 
     coordinate_noise: Tensor
@@ -142,29 +163,35 @@ class DenoiserOutput:
         if not bool(torch.isfinite(self.coordinate_noise).all()):
             raise ValueError("coordinate_noise contains NaN or Inf")
         if bool(
-            (
-                self.coordinate_noise.masked_select(
-                    ~state.mask.atom_mask.unsqueeze(-1)
-                )
-                != 0
-            ).any()
+            self.coordinate_noise.masked_select(
+                ~state.mask.diffusion_mask.unsqueeze(-1)
+            ).ne(0).any()
         ):
-            raise ValueError("coordinate_noise must be zero for padded atoms")
+            raise ValueError("coordinate_noise must be zero for fixed/padded atoms")
 
 
 class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
     """EGNN-style coordinate denoiser without pocket or diffusion logic.
 
-    Atom, bond, timestep, and optional descriptor inputs are treated as scalar
-    invariants. Absolute xyz values are never passed to an MLP. Coordinate
-    updates are linear combinations of relative unit displacements with scalar
-    invariant coefficients.
+    Continuous atom/bond features, categorical atom/bond embeddings, timestep,
+    and optional descriptors are treated as scalar invariants. Absolute xyz
+    values are never passed to an MLP. Coordinate updates are linear
+    combinations of relative unit displacements with scalar invariant
+    coefficients.
     """
 
     def __init__(self, config: EquivariantDenoiserConfig) -> None:
         super().__init__()
         self.config = config
         self.atom_projection = nn.Linear(config.atom_feature_dim, config.hidden_dim)
+        self.atom_type_embedding = nn.Embedding(
+            config.atom_type_vocab_size,
+            config.hidden_dim,
+        )
+        self.bond_type_embedding = nn.Embedding(
+            config.bond_type_vocab_size,
+            config.hidden_dim,
+        )
         self.timestep_embedding = SinusoidalTimestepEmbedding(
             config.timestep_embedding_dim,
             max_period=config.max_time_period,
@@ -182,7 +209,7 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
         self.layers = nn.ModuleList(
             EGNNMessageLayer(
                 hidden_dim=config.hidden_dim,
-                edge_feature_dim=config.edge_feature_dim,
+                edge_feature_dim=config.edge_feature_dim + config.hidden_dim,
                 coordinate_scale=config.coordinate_scale,
                 epsilon=config.epsilon,
             )
@@ -234,11 +261,13 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
             raise ValueError("model and state must be on the same device")
         if parameter.dtype != state.coordinates.dtype:
             raise TypeError("model and state floating tensors must share a dtype")
-        if self.config.descriptor_dim is not None:
-            if state.descriptor.shape[-1] != self.config.descriptor_dim:
-                raise ValueError(
-                    "state descriptor dimension does not match model config"
-                )
+        if (
+            self.config.descriptor_dim is not None
+            and state.descriptor.shape[-1] != self.config.descriptor_dim
+        ):
+            raise ValueError(
+                "state descriptor dimension does not match model config"
+            )
 
     def forward(
         self,
@@ -247,7 +276,7 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
         *,
         node_condition: Tensor | None = None,
     ) -> DenoiserOutput:
-        """Predict centered coordinate noise from graph and scalar conditions.
+        """Predict coordinate noise only for atoms selected for diffusion.
 
         ``node_condition`` is an optional generic scalar-invariant extension
         point with shape ``[B, N, hidden_dim]``. It must already be encoded on
@@ -262,7 +291,16 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
         normalized_timestep = self._normalize_timestep(state, timestep)
 
         atom_mask = state.mask.atom_mask
-        node_features = self.atom_projection(state.atom_features)
+        node_features = self.atom_projection(
+            state.atom_features
+        ) + self.atom_type_embedding(state.atom_types)
+        embedded_edge_features = torch.cat(
+            (
+                state.edge_features,
+                self.bond_type_embedding(state.bond_types),
+            ),
+            dim=-1,
+        )
         time_condition = self.timestep_projection(
             self.timestep_embedding(normalized_timestep)
         )
@@ -307,18 +345,31 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
                 node_features,
                 updated_coordinates,
                 state.edge_index,
-                state.edge_features,
+                embedded_edge_features,
                 atom_mask,
                 state.mask.edge_mask,
+                state.mask.diffusion_mask,
             )
 
-        coordinate_mask = atom_mask.unsqueeze(-1).to(initial_coordinates.dtype)
+        coordinate_mask = state.mask.diffusion_mask.unsqueeze(-1).to(
+            initial_coordinates.dtype
+        )
         coordinate_noise = (updated_coordinates - initial_coordinates) * coordinate_mask
         valid_counts = coordinate_mask.sum(dim=1, keepdim=True)
         prediction_center = (
             coordinate_noise.sum(dim=1, keepdim=True) / valid_counts
         )
-        coordinate_noise = (coordinate_noise - prediction_center) * coordinate_mask
+        centered_prediction = (
+            coordinate_noise - prediction_center
+        ) * coordinate_mask
+        has_fixed_anchor = (
+            atom_mask & ~state.mask.diffusion_mask
+        ).any(dim=1, keepdim=True).unsqueeze(-1)
+        coordinate_noise = torch.where(
+            has_fixed_anchor,
+            coordinate_noise,
+            centered_prediction,
+        )
         output = DenoiserOutput(coordinate_noise=coordinate_noise)
         output.validate(state)
         return output

@@ -14,6 +14,8 @@ model:
   type: egnn_denoiser
   atom_feature_dim: 4
   edge_feature_dim: 2
+  atom_type_vocab_size: 9
+  bond_type_vocab_size: 4
   hidden_dim: 16
   num_layers: 2
   timestep_embedding_dim: 8
