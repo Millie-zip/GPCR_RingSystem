@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
+import threading
+import time
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +33,105 @@ DEFAULT_REFERENCE_PDB = Path(
     "/share/home/weiliao02/lyx/zinc_project/8DPF_V1_prepared/"
     "8DPF_lorcaserin_reference_raw.pdb"
 )
+
+DEFAULT_HEARTBEAT_SECONDS = 15.0
+DEFAULT_COMMIT_EVERY = 1
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class _ProgressReporter:
+    """Atomically publish live build state, including blocked phase duration."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        limit: int | None,
+        heartbeat_seconds: float,
+    ) -> None:
+        self.path = path
+        self.heartbeat_seconds = heartbeat_seconds
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        now = _utc_now()
+        self._phase_started = time.monotonic()
+        self._state: dict[str, Any] = {
+            "schema_version": 1,
+            "pid": os.getpid(),
+            "status": "running",
+            "phase": "initializing",
+            "started_at": now,
+            "updated_at": now,
+            "phase_started_at": now,
+            "phase_elapsed_seconds": 0.0,
+            "limit": limit,
+            "current_index": None,
+            "current_source_part": None,
+            "current_molecule_uid": None,
+            "processed": 0,
+            "passed": 0,
+            "failed": 0,
+            "last_error": None,
+        }
+
+    def start(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            self._write_locked()
+        self._thread = threading.Thread(
+            target=self._heartbeat_loop,
+            name="stage3-progress-heartbeat",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def update(self, *, phase: str | None = None, **changes: Any) -> None:
+        with self._lock:
+            if phase is not None and phase != self._state["phase"]:
+                now = _utc_now()
+                self._state["phase"] = phase
+                self._state["phase_started_at"] = now
+                self._phase_started = time.monotonic()
+            self._state.update(changes)
+            self._write_locked()
+
+    def finish(self, status: str, *, last_error: str | None = None) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(1.0, self.heartbeat_seconds * 2.0))
+        self.update(
+            phase=status,
+            status=status,
+            last_error=last_error,
+            current_index=None,
+            current_source_part=None,
+            current_molecule_uid=None,
+        )
+
+    def _heartbeat_loop(self) -> None:
+        while not self._stop.wait(self.heartbeat_seconds):
+            try:
+                with self._lock:
+                    self._write_locked()
+            except OSError as exc:
+                print(f"progress heartbeat write failed: {exc}", flush=True)
+
+    def _write_locked(self) -> None:
+        self._state["updated_at"] = _utc_now()
+        self._state["phase_elapsed_seconds"] = round(
+            time.monotonic() - self._phase_started,
+            1,
+        )
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(self._state, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(self.path)
 
 
 def _read_only_uri(path: Path) -> str:
@@ -167,21 +271,29 @@ def _expected_symbols(atom_facts_json: str) -> list[str]:
     return result
 
 
-def _write_starting_conformers(smiles: str, output_sdf: Path) -> None:
-    from rdkit import Chem
-
-    from gpcr_ringgen.preprocessing.pocket_prefilter.pipeline import (
-        generate_conformers,
-    )
-
-    generated = generate_conformers(smiles)
-    molecule = generated["mol3d"]
-    writer = Chem.SDWriter(str(output_sdf))
-    try:
-        for conformer_id in generated["conf_ids"]:
-            writer.write(molecule, confId=int(conformer_id))
-    finally:
-        writer.close()
+def _conformer_command(
+    smiles: str,
+    output_sdf: Path,
+    *,
+    max_conformers: int,
+    embed_max_iterations: int,
+    uff_max_iters: int,
+) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "gpcr_ringgen.preprocessing.diffusion_dataset.conformer_worker",
+        "--smiles",
+        smiles,
+        "--output-sdf",
+        str(output_sdf),
+        "--max-conformers",
+        str(max_conformers),
+        "--embed-max-iterations",
+        str(embed_max_iterations),
+        "--uff-max-iters",
+        str(uff_max_iters),
+    ]
 
 
 def _heavy_coordinates(
@@ -338,6 +450,13 @@ def build_stage3_assets(
     output_dir: Path | None = None,
     limit: int | None = None,
     resume: bool = False,
+    progress_file: Path | None = None,
+    heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
+    commit_every: int = DEFAULT_COMMIT_EVERY,
+    max_conformers: int = 10,
+    embed_max_iterations: int = 2000,
+    uff_max_iters: int = 250,
+    conformer_timeout_seconds: float = 1800.0,
 ) -> tuple[Path, Path]:
     """Generate sibling pose DB/pocket JSON and return their paths."""
 
@@ -346,115 +465,206 @@ def build_stage3_assets(
             raise FileNotFoundError(path)
     if limit is not None and (isinstance(limit, bool) or limit < 1):
         raise ValueError("limit must be a positive integer or None")
+    if heartbeat_seconds <= 0:
+        raise ValueError("heartbeat_seconds must be positive")
+    if conformer_timeout_seconds <= 0:
+        raise ValueError("conformer_timeout_seconds must be positive")
+    if isinstance(commit_every, bool) or commit_every < 1:
+        raise ValueError("commit_every must be a positive integer")
+    for name, value in (
+        ("max_conformers", max_conformers),
+        ("embed_max_iterations", embed_max_iterations),
+        ("uff_max_iters", uff_max_iters),
+    ):
+        if isinstance(value, bool) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
     destination = source_db.parent if output_dir is None else output_dir
     destination.mkdir(parents=True, exist_ok=True)
     poses_db = destination / "8dpf_docked_poses.db"
     pocket_json = destination / "8dpf_13A_pocket.json"
+    live_progress = (
+        destination / "stage3_build_progress.json"
+        if progress_file is None
+        else progress_file
+    )
     if not resume and (poses_db.exists() or pocket_json.exists()):
         raise FileExistsError("output exists; use --resume or choose another directory")
 
-    command_template = _load_command(docking_config)
-    executable = command_template[0]
-    if not Path(executable).is_file() and shutil.which(executable) is None:
-        raise FileNotFoundError(f"docking executable not found: {executable}")
-    pocket_atoms, context = _prepare_pocket_context(receptor_pdb, reference_pdb)
-    if not pocket_json.exists():
-        _write_pocket_json(
-            pocket_json,
-            pocket_atoms,
-            receptor_pdb=receptor_pdb,
-            reference_pdb=reference_pdb,
-        )
-
-    source = sqlite3.connect(_read_only_uri(source_db), uri=True)
-    output = sqlite3.connect(poses_db)
+    reporter = _ProgressReporter(
+        live_progress,
+        limit=limit,
+        heartbeat_seconds=heartbeat_seconds,
+    )
+    reporter.start()
     try:
-        _create_pose_schema(output)
-        output.executemany(
-            "INSERT OR REPLACE INTO build_metadata VALUES (?, ?)",
-            (
-                ("source_db", str(source_db)),
-                ("receptor_pdb", str(receptor_pdb)),
-                ("reference_pdb", str(reference_pdb)),
-                ("pocket_json", str(pocket_json)),
-                ("coordinate_contract", "heavy atoms in atom_facts_json order"),
-                ("rdkit_conformer_role", "docking initialization only"),
-            ),
-        )
-        processed = 0
-        for source_part, molecule_uid, smiles, atom_facts in _source_rows(
-            source,
-            limit=limit,
-        ):
-            if resume and output.execute(
-                "SELECT 1 FROM docked_poses WHERE source_part=? AND molecule_uid=?",
-                (source_part, molecule_uid),
-            ).fetchone():
-                continue
-            status = "FAIL"
-            coordinates_json = None
-            metrics: dict[str, Any] = {}
-            docking_score = None
-            error_text = None
-            try:
-                symbols = _expected_symbols(atom_facts)
-                with tempfile.TemporaryDirectory(prefix="gpcr_stage3_") as temp_name:
-                    temp = Path(temp_name)
-                    ligand_sdf = temp / "starting_conformers.sdf"
-                    docked_sdf = temp / "docked.sdf"
-                    _write_starting_conformers(smiles, ligand_sdf)
-                    command = _format_command(
-                        command_template,
-                        ligand_sdf=ligand_sdf,
-                        output_sdf=docked_sdf,
-                        receptor_pdb=receptor_pdb,
-                        reference_pdb=reference_pdb,
-                    )
-                    subprocess.run(command, check=True)
-                    if not docked_sdf.is_file():
-                        raise RuntimeError("docking command did not create output_sdf")
-                    coordinates, metrics, docking_score = _best_passing_pose(
-                        docked_sdf,
-                        symbols,
-                        context,
-                    )
-                status = "PASS"
-                coordinates_json = json.dumps(coordinates, separators=(",", ":"))
-            except Exception as exc:  # noqa: BLE001 - record per-molecule failures
-                error_text = f"{type(exc).__name__}: {exc}"
+        reporter.update(phase="loading_docking_configuration")
+        command_template = _load_command(docking_config)
+        executable = command_template[0]
+        if not Path(executable).is_file() and shutil.which(executable) is None:
+            raise FileNotFoundError(f"docking executable not found: {executable}")
 
-            output.execute(
-                """
-                INSERT OR REPLACE INTO docked_poses VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-                """,
+        reporter.update(phase="preparing_pocket")
+        pocket_atoms, context = _prepare_pocket_context(receptor_pdb, reference_pdb)
+        if not pocket_json.exists():
+            _write_pocket_json(
+                pocket_json,
+                pocket_atoms,
+                receptor_pdb=receptor_pdb,
+                reference_pdb=reference_pdb,
+            )
+
+        reporter.update(phase="opening_databases")
+        source = sqlite3.connect(_read_only_uri(source_db), uri=True)
+        output = sqlite3.connect(poses_db)
+        try:
+            _create_pose_schema(output)
+            output.executemany(
+                "INSERT OR REPLACE INTO build_metadata VALUES (?, ?)",
                 (
-                    source_part,
-                    molecule_uid,
-                    "best_pose_v1",
-                    coordinates_json,
-                    status,
-                    metrics.get("cavity_frac"),
-                    metrics.get("anchor_frac"),
-                    metrics.get("max_span_excess_A"),
-                    metrics.get("severe_atom_frac"),
-                    metrics.get("soft_atom_frac"),
-                    metrics.get("min_distance"),
-                    docking_score,
-                    error_text,
+                    ("source_db", str(source_db)),
+                    ("receptor_pdb", str(receptor_pdb)),
+                    ("reference_pdb", str(reference_pdb)),
+                    ("pocket_json", str(pocket_json)),
+                    ("progress_file", str(live_progress)),
+                    ("max_conformers", str(max_conformers)),
+                    ("embed_max_iterations", str(embed_max_iterations)),
+                    ("uff_max_iters", str(uff_max_iters)),
+                    (
+                        "conformer_timeout_seconds",
+                        str(conformer_timeout_seconds),
+                    ),
+                    ("coordinate_contract", "heavy atoms in atom_facts_json order"),
+                    ("rdkit_conformer_role", "docking initialization only"),
                 ),
             )
-            processed += 1
-            if processed % 100 == 0:
-                output.commit()
-                print(f"processed {processed:,} molecules", flush=True)
-        output.commit()
-        if output.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-            raise RuntimeError("pose database quick_check failed")
-    finally:
-        output.close()
-        source.close()
+            output.commit()
+            processed = 0
+            passed = 0
+            failed = 0
+            reporter.update(phase="reading_source_rows")
+            rows = _source_rows(source, limit=limit)
+            for row_index, (
+                source_part,
+                molecule_uid,
+                smiles,
+                atom_facts,
+            ) in enumerate(rows, start=1):
+                if resume and output.execute(
+                    "SELECT 1 FROM docked_poses WHERE source_part=? AND molecule_uid=?",
+                    (source_part, molecule_uid),
+                ).fetchone():
+                    continue
+                reporter.update(
+                    phase="validating_source_record",
+                    current_index=row_index,
+                    current_source_part=source_part,
+                    current_molecule_uid=molecule_uid,
+                )
+                status = "FAIL"
+                coordinates_json = None
+                metrics: dict[str, Any] = {}
+                docking_score = None
+                error_text = None
+                try:
+                    symbols = _expected_symbols(atom_facts)
+                    with tempfile.TemporaryDirectory(
+                        prefix="gpcr_stage3_"
+                    ) as temp_name:
+                        temp = Path(temp_name)
+                        ligand_sdf = temp / "starting_conformers.sdf"
+                        docked_sdf = temp / "docked.sdf"
+                        reporter.update(phase="rdkit_conformer_generation")
+                        subprocess.run(
+                            _conformer_command(
+                                smiles,
+                                ligand_sdf,
+                                max_conformers=max_conformers,
+                                embed_max_iterations=embed_max_iterations,
+                                uff_max_iters=uff_max_iters,
+                            ),
+                            check=True,
+                            timeout=conformer_timeout_seconds,
+                        )
+                        command = _format_command(
+                            command_template,
+                            ligand_sdf=ligand_sdf,
+                            output_sdf=docked_sdf,
+                            receptor_pdb=receptor_pdb,
+                            reference_pdb=reference_pdb,
+                        )
+                        reporter.update(phase="docking")
+                        subprocess.run(command, check=True)
+                        if not docked_sdf.is_file():
+                            raise RuntimeError(
+                                "docking command did not create output_sdf"
+                            )
+                        reporter.update(phase="pocket_quality_control")
+                        coordinates, metrics, docking_score = _best_passing_pose(
+                            docked_sdf,
+                            symbols,
+                            context,
+                        )
+                    status = "PASS"
+                    coordinates_json = json.dumps(
+                        coordinates,
+                        separators=(",", ":"),
+                    )
+                except Exception as exc:  # noqa: BLE001 - persist row failure
+                    error_text = f"{type(exc).__name__}: {exc}"
+
+                reporter.update(phase="writing_result")
+                output.execute(
+                    """
+                    INSERT OR REPLACE INTO docked_poses VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                    """,
+                    (
+                        source_part,
+                        molecule_uid,
+                        "best_pose_v1",
+                        coordinates_json,
+                        status,
+                        metrics.get("cavity_frac"),
+                        metrics.get("anchor_frac"),
+                        metrics.get("max_span_excess_A"),
+                        metrics.get("severe_atom_frac"),
+                        metrics.get("soft_atom_frac"),
+                        metrics.get("min_distance"),
+                        docking_score,
+                        error_text,
+                    ),
+                )
+                processed += 1
+                passed += int(status == "PASS")
+                failed += int(status != "PASS")
+                if processed % commit_every == 0:
+                    output.commit()
+                reporter.update(
+                    phase="molecule_complete",
+                    processed=processed,
+                    passed=passed,
+                    failed=failed,
+                    last_error=error_text,
+                )
+                print(
+                    f"[{processed}/{limit or '?'}] {status} "
+                    f"{source_part}/{molecule_uid}"
+                    + (f" | {error_text}" if error_text else ""),
+                    flush=True,
+                )
+            output.commit()
+            reporter.update(phase="database_integrity_check")
+            if output.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                raise RuntimeError("pose database quick_check failed")
+        finally:
+            output.close()
+            source.close()
+    except BaseException as exc:
+        status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
+        reporter.finish(status, last_error=f"{type(exc).__name__}: {exc}")
+        raise
+    reporter.finish("complete")
     return poses_db, pocket_json
 
 
@@ -469,6 +679,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--progress-file", type=Path)
+    parser.add_argument(
+        "--heartbeat-seconds",
+        type=float,
+        default=DEFAULT_HEARTBEAT_SECONDS,
+    )
+    parser.add_argument(
+        "--commit-every",
+        type=int,
+        default=DEFAULT_COMMIT_EVERY,
+    )
+    parser.add_argument("--max-conformers", type=int, default=10)
+    parser.add_argument("--embed-max-iterations", type=int, default=2000)
+    parser.add_argument("--uff-max-iters", type=int, default=250)
+    parser.add_argument(
+        "--conformer-timeout-seconds",
+        type=float,
+        default=1800.0,
+    )
     return parser
 
 
@@ -482,6 +711,13 @@ def cli(argv: Sequence[str] | None = None) -> None:
         output_dir=args.output_dir,
         limit=args.limit,
         resume=args.resume,
+        progress_file=args.progress_file,
+        heartbeat_seconds=args.heartbeat_seconds,
+        commit_every=args.commit_every,
+        max_conformers=args.max_conformers,
+        embed_max_iterations=args.embed_max_iterations,
+        uff_max_iters=args.uff_max_iters,
+        conformer_timeout_seconds=args.conformer_timeout_seconds,
     )
     print(f"Pose database: {poses_db}")
     print(f"Pocket JSON: {pocket_json}")

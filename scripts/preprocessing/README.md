@@ -31,6 +31,27 @@ python scripts/preprocessing/build_stage3_assets.py \
   --limit 100
 ```
 
+The builder writes `stage3_build_progress.json` next to the output database and
+refreshes it every 15 seconds, including while RDKit conformer generation or the
+docking subprocess is busy. Results are committed after every molecule by
+default. Watch the build from another terminal with:
+
+```bash
+python scripts/preprocessing/watch_stage3_progress.py \
+  /path/to/output/stage3_build_progress.json --interval 15
+```
+
+The live record reports the current molecule, current phase, time spent in that
+phase, completed/PASS/FAIL counts, and the last error. `--heartbeat-seconds`
+and `--commit-every` can tune heartbeat and transaction frequency.
+
+For a fast CPU interface test, reduce only the test-time conformer effort with
+`--max-conformers 2 --embed-max-iterations 500 --uff-max-iters 100`. Production
+defaults remain 10 conformers, 2000 embedding iterations, and 250 UFF steps.
+Conformer generation runs in an isolated subprocess, so the heartbeat remains
+live even inside RDKit; `--conformer-timeout-seconds` bounds a pathological
+molecule and records it as a row-level failure instead of blocking the build.
+
 If interrupted, continue with the same files using `--resume`. Do not start the
 full library until the docking command and the first 100 PASS/FAIL records have
 been reviewed. The old random rigid-placement prefilter is not treated as
