@@ -9,6 +9,8 @@ import sqlite3
 import pytest
 
 from gpcr_ringgen.preprocessing.diffusion_dataset.build_training_assets import (
+    SUPPORTED_ATOM_TYPES,
+    SUPPORTED_BOND_TYPES,
     build_training_assets,
     unpack_coordinates,
 )
@@ -115,6 +117,13 @@ def _fake_conformer(
             "min_nonbonded_distance_A": 2.8,
         },
     }
+
+
+def test_offline_vocabulary_matches_frozen_model_contract() -> None:
+    from gpcr_ringgen.core.vocab import ATOM_TYPE_TO_ID, BOND_TYPE_TO_ID
+
+    assert SUPPORTED_ATOM_TYPES == tuple(ATOM_TYPE_TO_ID)
+    assert SUPPORTED_BOND_TYPES == tuple(BOND_TYPE_TO_ID)
 
 
 def test_builder_writes_aligned_coordinates_masks_and_reports(tmp_path: Path) -> None:

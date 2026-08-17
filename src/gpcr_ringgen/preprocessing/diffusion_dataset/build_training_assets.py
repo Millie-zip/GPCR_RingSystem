@@ -16,7 +16,11 @@ import threading
 import time
 from typing import Any
 
-from gpcr_ringgen.core.vocab import ATOM_TYPE_TO_ID, BOND_TYPE_TO_ID
+# Keep the offline builder independent of torch. Importing gpcr_ringgen.core
+# initializes tensor interfaces, while this script only needs the already-frozen
+# categorical names. These tuples are contract-tested against core.vocab.
+SUPPORTED_ATOM_TYPES = ("C", "N", "O", "S", "P", "F", "Cl", "Br", "I")
+SUPPORTED_BOND_TYPES = ("SINGLE", "DOUBLE", "TRIPLE", "AROMATIC")
 
 
 SOURCE_COLUMNS = (
@@ -85,7 +89,7 @@ def _validate_source_graph(
         if not isinstance(atom, Mapping) or atom.get("atom_index") != expected:
             raise ValueError("atom_facts_json is not in contiguous atom-index order")
         symbol = atom.get("symbol")
-        if symbol not in ATOM_TYPE_TO_ID:
+        if symbol not in SUPPORTED_ATOM_TYPES:
             raise ValueError(f"unsupported atom type: {symbol!r}")
         normalized_atoms.append(atom)
 
@@ -99,7 +103,7 @@ def _validate_source_graph(
             raise ValueError("bond endpoint must be an integer atom index")
         if not (0 <= begin < len(atoms) and 0 <= end < len(atoms)):
             raise ValueError("bond endpoint is outside the atom range")
-        if bond.get("bond_type") not in BOND_TYPE_TO_ID:
+        if bond.get("bond_type") not in SUPPORTED_BOND_TYPES:
             raise ValueError(f"unsupported bond type: {bond.get('bond_type')!r}")
         normalized_bonds.append(bond)
     return normalized_atoms, normalized_bonds
