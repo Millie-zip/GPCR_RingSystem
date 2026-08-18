@@ -115,6 +115,9 @@ def stage2_output_to_stage3_input(
         edge_mask=stage2.mask.edge_mask,
         descriptor_mask=descriptor_mask,
         pocket_mask=pocket_mask,
+        ring_atom_mask=stage2.mask.ring_atom_mask,
+        ring_pair_mask=stage2.mask.ring_pair_mask,
+        ring_edge_mask=stage2.mask.ring_edge_mask,
     )
     result = Stage3Input(
         scaffold=stage2.scaffold,
@@ -123,6 +126,57 @@ def stage2_output_to_stage3_input(
         mask=combined_mask,
         metadata=stage2.metadata,
         pocket_field=pocket_field,
+    )
+    result.validate()
+    return result
+
+
+def add_ring_core_masks(
+    stage2_output: Stage2Output,
+    ring_atom_mask: Tensor,
+) -> Stage2Output:
+    """Attach ring-core masks to a sparse real-edge Stage 2 graph.
+
+    ``ring_atom_mask`` is ``[B, N]`` bool. Stage 2 edges are assumed to be real
+    chemical bonds, so every valid core-core edge is fixed-present. Route-A
+    complete candidate pairs are constructed later by the training or inference
+    graph builder.
+    """
+
+    if not isinstance(stage2_output, Stage2Output):
+        raise TypeError("stage2_output must be a Stage2Output")
+    stage2_output.validate()
+    if ring_atom_mask.shape != stage2_output.mask.atom_mask.shape:
+        raise ValueError("ring_atom_mask must have shape [B, N]")
+    if ring_atom_mask.dtype != torch.bool:
+        raise TypeError("ring_atom_mask must have dtype torch.bool")
+    if ring_atom_mask.device != stage2_output.scaffold.atom_features.device:
+        raise ValueError("ring_atom_mask must be on the graph device")
+    if bool((ring_atom_mask & ~stage2_output.mask.atom_mask).any()):
+        raise ValueError("ring_atom_mask must be a subset of atom_mask")
+    batch_size, _, num_edges = stage2_output.scaffold.edge_index.shape
+    ring_pair_mask = torch.zeros(
+        (batch_size, num_edges), dtype=torch.bool, device=ring_atom_mask.device
+    )
+    for batch_index in range(batch_size):
+        valid = stage2_output.mask.edge_mask[batch_index]
+        endpoints = stage2_output.scaffold.edge_index[batch_index, :, valid]
+        ring_pair_mask[batch_index, valid] = (
+            ring_atom_mask[batch_index, endpoints[0]]
+            & ring_atom_mask[batch_index, endpoints[1]]
+        )
+    result = Stage2Output(
+        scaffold=stage2_output.scaffold,
+        mask=BatchMask(
+            atom_mask=stage2_output.mask.atom_mask,
+            edge_mask=stage2_output.mask.edge_mask,
+            descriptor_mask=stage2_output.mask.descriptor_mask,
+            pocket_mask=stage2_output.mask.pocket_mask,
+            ring_atom_mask=ring_atom_mask,
+            ring_pair_mask=ring_pair_mask,
+            ring_edge_mask=ring_pair_mask.clone(),
+        ),
+        metadata=stage2_output.metadata,
     )
     result.validate()
     return result

@@ -121,6 +121,11 @@ class MolecularGraph:
         bond_types: Optional shape ``[B, E]``; ``torch.long``; same device.
             Values are categorical bond labels only for the already existing
             topology edges. They never encode edge existence.
+        formal_charge_types: Optional shape ``[B, N]``; ``torch.long``; same
+            device. Values are categorical IDs whose ordering is owned by the
+            chemical vocabulary.
+        chiralities: Optional shape ``[B, N]``; ``torch.long``; same device.
+            Values are categorical atom-chirality IDs.
 
     ``B`` is batch size, ``N`` padded atom capacity, and ``E`` padded edge
     capacity. The feature dimensions remain scientific design decisions.
@@ -132,6 +137,8 @@ class MolecularGraph:
     coordinates: Tensor | None = None
     atom_types: Tensor | None = None
     bond_types: Tensor | None = None
+    formal_charge_types: Tensor | None = None
+    chiralities: Tensor | None = None
 
     @property
     def batch_size(self) -> int:
@@ -190,6 +197,19 @@ class MolecularGraph:
                 raise ValueError("bond_types values must be non-negative.")
             tensors["atom_types"] = self.atom_types
             tensors["bond_types"] = self.bond_types
+        for name, values in (
+            ("formal_charge_types", self.formal_charge_types),
+            ("chiralities", self.chiralities),
+        ):
+            if values is None:
+                continue
+            _require_rank(name, values, 2)
+            _require_long(name, values)
+            if tuple(values.shape) != (batch_size, num_atoms):
+                raise ValueError(f"{name} must have shape [B, N].")
+            if bool((values < 0).any()):
+                raise ValueError(f"{name} values must be non-negative.")
+            tensors[name] = values
 
         for name, tensor in tensors.items():
             if tensor.device != self.atom_features.device:
@@ -221,8 +241,8 @@ class DescriptorBatch:
     def validate(self) -> None:
         _require_rank("descriptor.values", self.values, 2)
         _require_floating("descriptor.values", self.values)
-        if self.values.shape[0] < 1 or self.values.shape[1] < 1:
-            raise ValueError("descriptor.values dimensions B and D must be positive.")
+        if self.values.shape[0] < 1:
+            raise ValueError("descriptor.values batch dimension must be positive.")
 
 
 @dataclass
@@ -256,8 +276,8 @@ class PocketBatch:
             raise ValueError("pocket.coordinates must have shape [B, P, 3].")
         if (batch_size, num_points) != (feature_batch, feature_points):
             raise ValueError("Pocket coordinates and features dimensions differ.")
-        if batch_size < 1 or num_points < 1 or feature_dim < 1:
-            raise ValueError("Pocket dimensions B, P, and F_pocket must be positive.")
+        if batch_size < 1 or num_points < 0 or feature_dim < 1:
+            raise ValueError("Pocket batch and feature dimensions must be valid.")
         if self.features.device != self.coordinates.device:
             raise ValueError("Pocket coordinates and features must share a device.")
         if self.features.dtype != self.coordinates.dtype:
@@ -279,12 +299,22 @@ class BatchMask:
         pocket_mask: Optional shape ``[B, P]``; ``torch.bool``; ``True`` means a
             real pocket point/atom, ``False`` means padding; expected on the same
             device as ``atom_mask``.
+        ring_atom_mask: Optional shape ``[B, N]``; ``torch.bool``. ``True``
+            identifies fixed ring-core node slots.
+        ring_pair_mask: Optional shape ``[B, E]``; ``torch.bool``. ``True``
+            identifies candidate pairs whose two endpoints are in the ring core.
+        ring_edge_mask: Optional shape ``[B, E]``; ``torch.bool``. ``True``
+            identifies fixed-present ring-core edges and must be a subset of
+            ``ring_pair_mask``.
     """
 
     atom_mask: Tensor
     edge_mask: Tensor
     descriptor_mask: Tensor | None = None
     pocket_mask: Tensor | None = None
+    ring_atom_mask: Tensor | None = None
+    ring_pair_mask: Tensor | None = None
+    ring_edge_mask: Tensor | None = None
 
     @property
     def batch_size(self) -> int:
@@ -300,6 +330,9 @@ class BatchMask:
             "edge_mask": self.edge_mask,
             "descriptor_mask": self.descriptor_mask,
             "pocket_mask": self.pocket_mask,
+            "ring_atom_mask": self.ring_atom_mask,
+            "ring_pair_mask": self.ring_pair_mask,
+            "ring_edge_mask": self.ring_edge_mask,
         }
         for name, mask in masks.items():
             if mask is None:
@@ -312,6 +345,26 @@ class BatchMask:
                 raise ValueError(f"{name} must be on the atom_mask device.")
         if self.atom_mask.shape[0] < 1:
             raise ValueError("Mask batch size must be positive.")
+        ring_masks = (self.ring_atom_mask, self.ring_pair_mask, self.ring_edge_mask)
+        if any(mask is not None for mask in ring_masks) and not all(
+            mask is not None for mask in ring_masks
+        ):
+            raise ValueError(
+                "ring_atom_mask, ring_pair_mask, and ring_edge_mask must be provided together."
+            )
+        if self.ring_atom_mask is not None:
+            if self.ring_atom_mask.shape != self.atom_mask.shape:
+                raise ValueError("ring_atom_mask shape must match atom_mask.")
+            if self.ring_pair_mask.shape != self.edge_mask.shape:
+                raise ValueError("ring_pair_mask shape must match edge_mask.")
+            if self.ring_edge_mask.shape != self.edge_mask.shape:
+                raise ValueError("ring_edge_mask shape must match edge_mask.")
+            if bool((self.ring_atom_mask & ~self.atom_mask).any()):
+                raise ValueError("ring_atom_mask must be a subset of atom_mask.")
+            if bool((self.ring_pair_mask & ~self.edge_mask).any()):
+                raise ValueError("ring_pair_mask must be a subset of edge_mask.")
+            if bool((self.ring_edge_mask & ~self.ring_pair_mask).any()):
+                raise ValueError("ring_edge_mask must be a subset of ring_pair_mask.")
 
 
 @dataclass
@@ -505,6 +558,11 @@ class Stage3DiffusionState:
         bond_types: Optional shape ``[B, E]``; ``torch.long``; model device.
             In joint chemical diffusion this is the noisy label on each fixed
             topology edge. ``edge_index`` and edge existence never change.
+        formal_charge_types: Optional shape ``[B, N]``; ``torch.long``;
+            categorical formal-charge IDs. Ring-core entries remain fixed in
+            ring-conditioned side-chain diffusion.
+        chiralities: Optional shape ``[B, N]``; ``torch.long``; categorical
+            atom-chirality IDs. Ring-core entries remain fixed.
     """
 
     atom_features: Tensor
@@ -517,6 +575,8 @@ class Stage3DiffusionState:
     metadata: BatchMetadata
     atom_types: Tensor | None = None
     bond_types: Tensor | None = None
+    formal_charge_types: Tensor | None = None
+    chiralities: Tensor | None = None
 
     @property
     def batch_size(self) -> int:
@@ -532,6 +592,8 @@ class Stage3DiffusionState:
             coordinates=self.coordinates,
             atom_types=self.atom_types,
             bond_types=self.bond_types,
+            formal_charge_types=self.formal_charge_types,
+            chiralities=self.chiralities,
         )
         graph.validate()
         descriptor_batch = DescriptorBatch(self.descriptor)
@@ -564,9 +626,31 @@ class Stage3DiffusionState:
                 raise ValueError("atom_types must be zero for padded atoms.")
             if bool((self.bond_types.masked_select(~self.mask.edge_mask) != 0).any()):
                 raise ValueError("bond_types must be zero for padded edges.")
+        for name, values in (
+            ("formal_charge_types", self.formal_charge_types),
+            ("chiralities", self.chiralities),
+        ):
+            if values is not None and bool(
+                (values.masked_select(~self.mask.atom_mask) != 0).any()
+            ):
+                raise ValueError(f"{name} must be zero for padded atoms.")
         if self.mask.descriptor_mask is None or tuple(self.mask.descriptor_mask.shape) != tuple(self.descriptor.shape):
             raise ValueError("descriptor_mask shape must match descriptor [B, D].")
         if self.mask.device != self.atom_features.device:
             raise ValueError("State masks must be on the graph device.")
         self.metadata.validate(self.batch_size)
         _validate_edge_references(self.edge_index, self.mask.atom_mask, self.mask.edge_mask)
+        if self.mask.ring_atom_mask is not None:
+            for batch_index in range(self.batch_size):
+                valid = self.mask.edge_mask[batch_index]
+                endpoints = self.edge_index[batch_index, :, valid]
+                expected_ring_pairs = self.mask.ring_atom_mask[
+                    batch_index, endpoints[0]
+                ] & self.mask.ring_atom_mask[batch_index, endpoints[1]]
+                if not torch.equal(
+                    expected_ring_pairs,
+                    self.mask.ring_pair_mask[batch_index, valid],
+                ):
+                    raise ValueError(
+                        "ring_pair_mask must identify exactly the valid core-core candidate pairs."
+                    )

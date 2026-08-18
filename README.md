@@ -5,12 +5,14 @@
 > Current status: Stage 3 data contracts, reproducible three-dimensional
 > initialization, reversible pocket geometry preprocessing, and a basic
 > queryable geometry field and pocket-independent equivariant denoiser
-> backbone are available. Stage 3 now supports fixed-topology joint chemical
-> diffusion: node count, `edge_index`, edge existence, and ring connectivity
-> remain frozen, while atom labels, labels on existing bonds, and 3D coordinates
-> are jointly noised and denoised. Coordinate-only diffusion remains available
-> as a baseline. A configuration-driven independent Stage 3 inference Pipeline
-> is available for fixed topology and descriptor inputs.
+> backbone are available. In addition to the legacy fixed-full-topology path,
+> Stage 3 now exposes Route A for variable side chains: a conditional Poisson
+> model first generates the outer-atom count, the graph is expanded only to the
+> realized batch size, and joint diffusion generates atom types, bond states,
+> and 3D coordinates. Ring node/edge existence is fixed; ring atom types, ring
+> bond types, and ring coordinates remain generative. Ring formal charge and
+> chirality remain fixed conditions. The independent legacy inference Pipeline
+> remains available for fixed topology and descriptor inputs.
 
 Ring processing, a complete denoiser training loop, sampling guidance, docking,
 chemical evaluation, and molecule export are not implemented. The Dummy
@@ -78,6 +80,7 @@ This checkout already uses the configured `GPCR` environment. Do not recreate it
     python -m pytest tests/unit/test_equivariant_denoiser.py
     python -m pytest tests/unit/test_diffusion_process.py
     python -m pytest tests/unit/test_joint_chemical_diffusion.py
+    python -m pytest tests/unit/test_route_a_ring_sidechain.py
     python -m pytest tests/unit/test_field_conditioned_denoiser.py
     python -m pytest tests/unit/test_reverse_diffusion_sampling.py
     python -m pytest tests/integration/test_stage3_inference_pipeline.py
@@ -146,6 +149,42 @@ Pass local generators created by `make_torch_generator(seed, device)` to
 `sample_timesteps` and `q_sample` for reproducible sampling without mutating the
 global PyTorch random state. Reverse diffusion and sampling are intentionally
 implemented separately from the training-side API.
+
+## Route A: fixed ring core and variable side chains
+
+Route A does not configure a global candidate atom limit. The
+`ConditionalOuterAtomCountModel` predicts a positive Poisson rate conditioned
+on mean-pooled ring features and the descriptor, then samples a non-negative
+outer-atom count. Tensors are padded only to the largest realized atom count in
+the current batch. `runtime_atom_limit` is an optional allocation safety guard
+and is not part of the chemical vocabulary.
+
+`build_route_a_training_batch(...)` converts sparse real training molecules to
+complete unordered candidate-pair graphs. Existing bonds are shifted above
+zero and absent pairs receive `NO_BOND=0`. Every pair touching an outer atom is
+generative, so side chains may branch, close rings, or attach to multiple ring
+positions. Core-core non-edges remain absent and core-core edges remain
+present, preserving the unlabeled ring-core topology.
+`clean_ring_sidechain_state_from_input(...)` then copies the real training
+coordinates into the diffusion state; inference Gaussian initialization is not
+used as a substitute for `x_0`.
+
+`q_sample_ring_sidechain(...)` applies the agreed partition:
+
+- atom type and coordinates are diffused for every real atom;
+- bond type is diffused on fixed-present ring edges;
+- the full `NO_BOND | bond type` state is diffused on pairs touching an outer
+  atom;
+- ring formal charge and chirality are copied unchanged;
+- outer formal charge and chirality are categorically diffused.
+
+`RouteAStage3Sampler` calls the count model, dynamically expands the graph, and
+runs the corresponding categorical and coordinate reverse chain.
+`materialized_bond_mask(...)` selects final non-`NO_BOND` candidates when a
+sparse generated molecule is materialized. See
+`configs/diffusion/ring_sidechain.yaml` and
+`configs/model/ring_sidechain_denoiser.yaml`. Radical electrons, isotopes, and
+bond-stereo labels are not part of this implementation.
 
 ## Stage 3 reverse diffusion sampling
 

@@ -32,6 +32,15 @@ def _clone_batch_mask(mask: BatchMask) -> BatchMask:
             None if mask.descriptor_mask is None else mask.descriptor_mask.clone()
         ),
         pocket_mask=None if mask.pocket_mask is None else mask.pocket_mask.clone(),
+        ring_atom_mask=(
+            None if mask.ring_atom_mask is None else mask.ring_atom_mask.clone()
+        ),
+        ring_pair_mask=(
+            None if mask.ring_pair_mask is None else mask.ring_pair_mask.clone()
+        ),
+        ring_edge_mask=(
+            None if mask.ring_edge_mask is None else mask.ring_edge_mask.clone()
+        ),
     )
 
 
@@ -112,6 +121,67 @@ def initialize_stage3_state(
             if stage3_input.scaffold.bond_types is None
             else stage3_input.scaffold.bond_types.clone()
         ),
+        formal_charge_types=(
+            None
+            if stage3_input.scaffold.formal_charge_types is None
+            else stage3_input.scaffold.formal_charge_types.clone()
+        ),
+        chiralities=(
+            None
+            if stage3_input.scaffold.chiralities is None
+            else stage3_input.scaffold.chiralities.clone()
+        ),
+    )
+    state.validate()
+    return state
+
+
+def clean_stage3_state(
+    stage3_input: Stage3Input,
+    *,
+    timestep: int = 0,
+) -> Stage3DiffusionState:
+    """Build a training state from persisted ``x0`` coordinates.
+
+    This is deliberately separate from :func:`initialize_stage3_state`, whose
+    Gaussian initialization is an inference prior.  Training must never use
+    that prior as a substitute for database coordinates.
+    """
+
+    if not isinstance(stage3_input, Stage3Input):
+        raise TypeError("stage3_input must be a Stage3Input")
+    stage3_input.validate()
+    if isinstance(timestep, bool) or not isinstance(timestep, int):
+        raise TypeError("timestep must be an integer")
+    if timestep < 0:
+        raise ValueError("timestep must be non-negative")
+    coordinates = stage3_input.scaffold.coordinates
+    if coordinates is None:
+        raise ValueError("training input must contain persisted coordinates")
+    state = Stage3DiffusionState(
+        atom_features=stage3_input.scaffold.atom_features.clone(),
+        edge_index=stage3_input.scaffold.edge_index.clone(),
+        edge_features=stage3_input.scaffold.edge_features.clone(),
+        coordinates=coordinates.clone(),
+        descriptor=stage3_input.descriptor.values.clone(),
+        timestep=torch.full(
+            (stage3_input.batch_size,),
+            timestep,
+            dtype=torch.long,
+            device=coordinates.device,
+        ),
+        mask=_clone_batch_mask(stage3_input.mask),
+        metadata=stage3_input.metadata,
+        atom_types=(
+            None
+            if stage3_input.scaffold.atom_types is None
+            else stage3_input.scaffold.atom_types.clone()
+        ),
+        bond_types=(
+            None
+            if stage3_input.scaffold.bond_types is None
+            else stage3_input.scaffold.bond_types.clone()
+        ),
     )
     state.validate()
     return state
@@ -120,6 +190,7 @@ def initialize_stage3_state(
 __all__ = [
     "DiffusionState",
     "Stage3DiffusionState",
+    "clean_stage3_state",
     "initialize_stage3_state",
     "make_dummy_state",
 ]

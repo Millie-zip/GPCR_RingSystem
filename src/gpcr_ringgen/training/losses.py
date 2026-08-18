@@ -11,6 +11,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from gpcr_ringgen.models.diffusion.chemical import JointForwardDiffusionOutput
+from gpcr_ringgen.models.diffusion.ring_sidechain import RingSidechainForwardOutput
 from gpcr_ringgen.models.equivariant.backbone import DenoiserOutput
 
 
@@ -255,11 +256,143 @@ class JointDiffusionLoss(nn.Module):
         )
 
 
+@dataclass(frozen=True)
+class RingSidechainDiffusionLossOutput:
+    """Route-A coordinate and categorical loss components."""
+
+    total: Tensor
+    coordinate: Tensor
+    atom: Tensor
+    bond: Tensor
+    formal_charge: Tensor
+    chirality: Tensor
+
+
+def _masked_ce_or_zero(
+    logits: Tensor,
+    target: Tensor,
+    mask: Tensor,
+    *,
+    reduction: str,
+) -> Tensor:
+    if bool(mask.any()):
+        return masked_categorical_cross_entropy(
+            logits,
+            target,
+            mask,
+            reduction=reduction,
+        )
+    return logits.sum() * 0.0
+
+
+class RingSidechainDiffusionLoss(nn.Module):
+    """Route-A objective with fixed ring existence and generated chemistry."""
+
+    def __init__(
+        self,
+        *,
+        coordinate_weight: float = 1.0,
+        atom_weight: float = 1.0,
+        bond_weight: float = 1.0,
+        formal_charge_weight: float = 1.0,
+        chirality_weight: float = 1.0,
+        reduction: str = "mean",
+    ) -> None:
+        super().__init__()
+        weights = (
+            coordinate_weight,
+            atom_weight,
+            bond_weight,
+            formal_charge_weight,
+            chirality_weight,
+        )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or value < 0
+            for value in weights
+        ):
+            raise ValueError("Route-A loss weights must be non-negative real numbers")
+        if sum(weights) <= 0:
+            raise ValueError("at least one Route-A loss weight must be positive")
+        if reduction not in {"mean", "sum"}:
+            raise ValueError("reduction must be 'mean' or 'sum'")
+        self.coordinate_weight = float(coordinate_weight)
+        self.atom_weight = float(atom_weight)
+        self.bond_weight = float(bond_weight)
+        self.formal_charge_weight = float(formal_charge_weight)
+        self.chirality_weight = float(chirality_weight)
+        self.reduction = reduction
+
+    def forward(
+        self,
+        prediction: DenoiserOutput,
+        target: RingSidechainForwardOutput,
+    ) -> RingSidechainDiffusionLossOutput:
+        if not isinstance(target, RingSidechainForwardOutput):
+            raise TypeError("target must be a RingSidechainForwardOutput")
+        state = target.noisy_state
+        prediction.validate(state)
+        if prediction.atom_type_logits is None or prediction.bond_type_logits is None:
+            raise ValueError("Route-A prediction requires atom and bond logits")
+        if prediction.formal_charge_logits is None or prediction.chirality_logits is None:
+            raise ValueError("Route-A prediction requires charge and chirality logits")
+        coordinate = masked_coordinate_mse(
+            prediction.coordinate_noise,
+            target.coordinate_noise,
+            state.mask.atom_mask,
+            reduction=self.reduction,
+        )
+        atom = masked_categorical_cross_entropy(
+            prediction.atom_type_logits,
+            target.clean_atom_types,
+            state.mask.atom_mask,
+            reduction=self.reduction,
+        )
+        bond = _masked_ce_or_zero(
+            prediction.bond_type_logits,
+            target.clean_bond_types,
+            target.bond_loss_mask,
+            reduction=self.reduction,
+        )
+        formal_charge = _masked_ce_or_zero(
+            prediction.formal_charge_logits,
+            target.clean_formal_charge_types,
+            target.outer_atom_mask,
+            reduction=self.reduction,
+        )
+        chirality = _masked_ce_or_zero(
+            prediction.chirality_logits,
+            target.clean_chiralities,
+            target.outer_atom_mask,
+            reduction=self.reduction,
+        )
+        total = (
+            self.coordinate_weight * coordinate
+            + self.atom_weight * atom
+            + self.bond_weight * bond
+            + self.formal_charge_weight * formal_charge
+            + self.chirality_weight * chirality
+        )
+        if not bool(torch.isfinite(total)):
+            raise ValueError("Route-A diffusion loss is not finite")
+        return RingSidechainDiffusionLossOutput(
+            total=total,
+            coordinate=coordinate,
+            atom=atom,
+            bond=bond,
+            formal_charge=formal_charge,
+            chirality=chirality,
+        )
+
+
 __all__ = [
     "JointDiffusionLoss",
     "JointDiffusionLossOutput",
     "Loss",
     "NoisePredictionLoss",
+    "RingSidechainDiffusionLoss",
+    "RingSidechainDiffusionLossOutput",
     "masked_categorical_cross_entropy",
     "masked_coordinate_mse",
 ]

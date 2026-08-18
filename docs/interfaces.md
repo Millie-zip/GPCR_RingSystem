@@ -32,6 +32,18 @@ existing edges, and `coordinates [B, N, 3]` are the generated variables.
 `chemical_vocabulary` records the stable category ordering; the existing-edge
 bond vocabulary deliberately has no `NO_BOND` category.
 
+Route A is a separate variable-side-chain contract layered on these base
+types. `ring_atom_mask [B,N]` fixes core membership;
+`ring_pair_mask [B,E]` identifies all core-core candidate pairs; and
+`ring_edge_mask [B,E]` identifies the fixed-present subset. After a
+non-negative outer count is sampled, the graph is padded only to the current
+batch maximum and contains each unordered candidate pair once. Bond category
+zero is `NO_BOND`. Core edges may change bond type but never become
+`NO_BOND`; core non-edges remain `NO_BOND`; every pair touching an outer atom
+is generated. `formal_charge_types [B,N]` and `chiralities [B,N]` are generated
+only outside the core and copied unchanged inside it. Atom type and coordinates
+are generated for all real atoms.
+
 `Stage2Output` and plain mapping mocks can be adapted with
 `stage2_output_to_stage3_input`. The adapter validates data only; it does not run
 Stage 2, calculate descriptors, preprocess pockets, construct fields, diffuse,
