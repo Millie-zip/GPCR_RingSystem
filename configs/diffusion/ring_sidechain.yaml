@@ -1,0 +1,35 @@
+diffusion:
+  mode: joint_chemical
+  num_timesteps: 1000
+  beta_schedule: linear
+  beta_start: 0.0001
+  beta_end: 0.02
+  prediction_type: epsilon
+  loss_reduction: mean
+  num_atom_types: 9
+  num_bond_types: 5
+  coordinate_loss_weight: 1.0
+  atom_loss_weight: 1.0
+  bond_loss_weight: 1.0
+
+route_a:
+  count_model:
+    type: conditional_poisson
+    hidden_dim: 64
+  class_counts:
+    num_atom_types: 9
+    num_bond_states: 5
+    num_formal_charge_types: 5
+    num_chirality_types: 3
+  loss_weights:
+    coordinate: 1.0
+    atom: 1.0
+    bond: 1.0
+    formal_charge: 1.0
+    chirality: 1.0
+
+chemical_vocabulary:
+  atom_types: [C, N, O, S, P, F, Cl, Br, I]
+  bond_types: [NO_BOND, SINGLE, DOUBLE, TRIPLE, AROMATIC]
+  formal_charges: [-2, -1, 0, 1, 2]
+  chiralities: [UNSPECIFIED, TETRAHEDRAL_CW, TETRAHEDRAL_CCW]

@@ -1,7 +1,7 @@
 pipeline:
   input_path: examples/inputs/stage3_smoke.json
   checkpoint_path: null
-  output_path: outputs/stage3_smoke_output.json
+  output_path: outputs/stage3_joint_smoke_output.json
   allow_random_weights: true
 
 device:
@@ -9,6 +9,23 @@ device:
   dtype: float32
 
 seed: 42
+
+chemical_vocabulary:
+  atom_types:
+    - C
+    - N
+    - O
+    - S
+    - P
+    - F
+    - Cl
+    - Br
+    - I
+  bond_types:
+    - SINGLE
+    - DOUBLE
+    - TRIPLE
+    - AROMATIC
 
 model:
   type: egnn_denoiser
@@ -21,6 +38,8 @@ model:
   epsilon: 1.0e-8
   max_time_period: 10000.0
   descriptor_dim: 3
+  num_atom_types: 9
+  num_bond_types: 4
 
 field_conditioning:
   mode: additive
@@ -38,12 +57,18 @@ field:
     nearest_distance: true
 
 diffusion:
+  mode: joint_chemical
   num_timesteps: 4
   beta_schedule: linear
   beta_start: 0.001
   beta_end: 0.02
   prediction_type: epsilon
   loss_reduction: mean
+  num_atom_types: 9
+  num_bond_types: 4
+  coordinate_loss_weight: 1.0
+  atom_loss_weight: 1.0
+  bond_loss_weight: 1.0
 
 sampling:
   return_trajectory: false

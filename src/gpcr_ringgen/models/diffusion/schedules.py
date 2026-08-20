@@ -56,6 +56,12 @@ class DDPMConfig:
     beta_end: float
     prediction_type: str
     loss_reduction: str
+    mode: str = "coordinate_only"
+    num_atom_types: int | None = None
+    num_bond_types: int | None = None
+    coordinate_loss_weight: float = 1.0
+    atom_loss_weight: float = 1.0
+    bond_loss_weight: float = 1.0
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -81,6 +87,37 @@ class DDPMConfig:
             raise ValueError("prediction_type must be 'epsilon'")
         if self.loss_reduction not in {"mean", "sum"}:
             raise ValueError("loss_reduction must be 'mean' or 'sum'")
+        if self.mode not in {"coordinate_only", "joint_chemical"}:
+            raise ValueError(
+                "diffusion mode must be 'coordinate_only' or 'joint_chemical'"
+            )
+        if self.mode == "joint_chemical":
+            for name in ("num_atom_types", "num_bond_types"):
+                value = getattr(self, name)
+                if value is None:
+                    raise ValueError(f"{name} is required in joint_chemical mode")
+                object.__setattr__(self, name, _require_positive_int(name, value))
+                if getattr(self, name) < 2:
+                    raise ValueError(f"{name} must be at least 2")
+        for name in (
+            "coordinate_loss_weight",
+            "atom_loss_weight",
+            "bond_loss_weight",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} must be a real number")
+            converted = float(value)
+            if not math.isfinite(converted) or converted < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+            object.__setattr__(self, name, converted)
+        if self.mode == "joint_chemical" and (
+            self.coordinate_loss_weight
+            + self.atom_loss_weight
+            + self.bond_loss_weight
+            <= 0.0
+        ):
+            raise ValueError("at least one joint diffusion loss weight must be positive")
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any]) -> "DDPMConfig":
@@ -100,7 +137,23 @@ class DDPMConfig:
         missing = [name for name in required if name not in diffusion_config]
         if missing:
             raise KeyError(f"missing diffusion config keys: {', '.join(missing)}")
-        return cls(**{name: diffusion_config[name] for name in required})
+        optional = (
+            "mode",
+            "num_atom_types",
+            "num_bond_types",
+            "coordinate_loss_weight",
+            "atom_loss_weight",
+            "bond_loss_weight",
+        )
+        values = {name: diffusion_config[name] for name in required}
+        values.update(
+            {
+                name: diffusion_config[name]
+                for name in optional
+                if name in diffusion_config
+            }
+        )
+        return cls(**values)
 
 
 def load_ddpm_config(path: str | Path) -> DDPMConfig:

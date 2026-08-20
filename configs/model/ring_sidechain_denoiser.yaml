@@ -1,0 +1,15 @@
+model:
+  type: egnn_denoiser
+  atom_feature_dim: 16
+  edge_feature_dim: 8
+  hidden_dim: 64
+  num_layers: 3
+  timestep_embedding_dim: 32
+  coordinate_scale: 0.1
+  epsilon: 1.0e-8
+  max_time_period: 10000.0
+  descriptor_dim: null
+  num_atom_types: 9
+  num_bond_types: 5
+  num_formal_charge_types: 5
+  num_chirality_types: 3

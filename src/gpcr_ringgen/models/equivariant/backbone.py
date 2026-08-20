@@ -56,6 +56,10 @@ class EquivariantDenoiserConfig:
     epsilon: float
     max_time_period: float
     descriptor_dim: int | None = None
+    num_atom_types: int | None = None
+    num_bond_types: int | None = None
+    num_formal_charge_types: int | None = None
+    num_chirality_types: int | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -82,6 +86,30 @@ class EquivariantDenoiserConfig:
                 "descriptor_dim",
                 _positive_int("descriptor_dim", self.descriptor_dim),
             )
+        if (self.num_atom_types is None) != (self.num_bond_types is None):
+            raise ValueError(
+                "num_atom_types and num_bond_types must either both be set or absent"
+            )
+        for name in ("num_atom_types", "num_bond_types"):
+            value = getattr(self, name)
+            if value is not None:
+                normalized = _positive_int(name, value)
+                if normalized < 2:
+                    raise ValueError(f"{name} must be at least 2")
+                object.__setattr__(self, name, normalized)
+        if (self.num_formal_charge_types is None) != (self.num_chirality_types is None):
+            raise ValueError(
+                "num_formal_charge_types and num_chirality_types must both be set or absent"
+            )
+        if self.num_formal_charge_types is not None and self.num_atom_types is None:
+            raise ValueError("charge/chirality prediction requires chemical denoising")
+        for name in ("num_formal_charge_types", "num_chirality_types"):
+            value = getattr(self, name)
+            if value is not None:
+                normalized = _positive_int(name, value)
+                if normalized < 2:
+                    raise ValueError(f"{name} must be at least 2")
+                object.__setattr__(self, name, normalized)
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any]) -> "EquivariantDenoiserConfig":
@@ -107,7 +135,16 @@ class EquivariantDenoiserConfig:
         missing = [name for name in required if name not in model_config]
         if missing:
             raise KeyError(f"missing denoiser config keys: {', '.join(missing)}")
-        return cls(**{name: model_config[name] for name in required})
+        values = {name: model_config[name] for name in required}
+        for name in (
+            "num_atom_types",
+            "num_bond_types",
+            "num_formal_charge_types",
+            "num_chirality_types",
+        ):
+            if name in model_config:
+                values[name] = model_config[name]
+        return cls(**values)
 
 
 def load_equivariant_denoiser_config(
@@ -120,7 +157,7 @@ def load_equivariant_denoiser_config(
 
 @dataclass(frozen=True)
 class DenoiserOutput:
-    """Coordinate-noise prediction from the base equivariant backbone.
+    """Coordinate and optional fixed-topology chemical predictions.
 
     Tensor fields:
         coordinate_noise: Shape ``[B, N, 3]``; floating-point; same dtype and
@@ -129,6 +166,10 @@ class DenoiserOutput:
     """
 
     coordinate_noise: Tensor
+    atom_type_logits: Tensor | None = None
+    bond_type_logits: Tensor | None = None
+    formal_charge_logits: Tensor | None = None
+    chirality_logits: Tensor | None = None
 
     def validate(self, state: Stage3DiffusionState) -> None:
         if not isinstance(self.coordinate_noise, Tensor):
@@ -150,6 +191,70 @@ class DenoiserOutput:
             ).any()
         ):
             raise ValueError("coordinate_noise must be zero for padded atoms")
+        if (self.atom_type_logits is None) != (self.bond_type_logits is None):
+            raise ValueError(
+                "atom_type_logits and bond_type_logits must both be present or absent"
+            )
+        if self.atom_type_logits is not None and self.bond_type_logits is not None:
+            atom_logits = self.atom_type_logits
+            bond_logits = self.bond_type_logits
+            if atom_logits.ndim != 3 or tuple(atom_logits.shape[:2]) != tuple(
+                state.atom_features.shape[:2]
+            ):
+                raise ValueError("atom_type_logits must have shape [B, N, C_atom]")
+            if bond_logits.ndim != 3 or tuple(bond_logits.shape[:2]) != (
+                state.batch_size,
+                state.edge_features.shape[1],
+            ):
+                raise ValueError("bond_type_logits must have shape [B, E, C_bond]")
+            if atom_logits.shape[-1] < 2 or bond_logits.shape[-1] < 2:
+                raise ValueError("chemical logits must contain at least two classes")
+            for name, values in (
+                ("atom_type_logits", atom_logits),
+                ("bond_type_logits", bond_logits),
+            ):
+                if not torch.is_floating_point(values):
+                    raise TypeError(f"{name} must use a floating-point dtype")
+                if values.dtype != state.coordinates.dtype:
+                    raise TypeError(f"{name} dtype must match state coordinates")
+                if values.device != state.coordinates.device:
+                    raise ValueError(f"{name} device must match state coordinates")
+                if not bool(torch.isfinite(values).all()):
+                    raise ValueError(f"{name} contains NaN or Inf")
+            if bool(
+                (atom_logits.masked_select(~state.mask.atom_mask.unsqueeze(-1)) != 0).any()
+            ):
+                raise ValueError("atom_type_logits must be zero for padded atoms")
+            if bool(
+                (bond_logits.masked_select(~state.mask.edge_mask.unsqueeze(-1)) != 0).any()
+            ):
+                raise ValueError("bond_type_logits must be zero for padded edges")
+        if (self.formal_charge_logits is None) != (self.chirality_logits is None):
+            raise ValueError(
+                "formal_charge_logits and chirality_logits must both be present or absent"
+            )
+        for name, values in (
+            ("formal_charge_logits", self.formal_charge_logits),
+            ("chirality_logits", self.chirality_logits),
+        ):
+            if values is None:
+                continue
+            if values.ndim != 3 or tuple(values.shape[:2]) != tuple(
+                state.atom_features.shape[:2]
+            ):
+                raise ValueError(f"{name} must have shape [B, N, C]")
+            if values.shape[-1] < 2:
+                raise ValueError(f"{name} must contain at least two classes")
+            if values.dtype != state.coordinates.dtype:
+                raise TypeError(f"{name} dtype must match state coordinates")
+            if values.device != state.coordinates.device:
+                raise ValueError(f"{name} device must match state coordinates")
+            if not bool(torch.isfinite(values).all()):
+                raise ValueError(f"{name} contains NaN or Inf")
+            if bool(
+                (values.masked_select(~state.mask.atom_mask.unsqueeze(-1)) != 0).any()
+            ):
+                raise ValueError(f"{name} must be zero for padded atoms")
 
 
 class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
@@ -179,6 +284,62 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
             if config.descriptor_dim is None
             else nn.Linear(config.descriptor_dim, config.hidden_dim)
         )
+        if config.num_atom_types is None:
+            self.atom_type_embedding = None
+            self.bond_type_embedding = None
+            self.atom_type_head = None
+            self.bond_type_head = None
+            self.formal_charge_embedding = None
+            self.chirality_embedding = None
+            self.formal_charge_head = None
+            self.chirality_head = None
+        else:
+            if config.num_bond_types is None:
+                raise ValueError("num_bond_types is required with num_atom_types")
+            self.atom_type_embedding = nn.Embedding(
+                config.num_atom_types,
+                config.hidden_dim,
+            )
+            self.bond_type_embedding = nn.Embedding(
+                config.num_bond_types,
+                config.edge_feature_dim,
+            )
+            self.atom_type_head = nn.Linear(
+                config.hidden_dim,
+                config.num_atom_types,
+            )
+            self.bond_type_head = nn.Sequential(
+                nn.Linear(
+                    2 * config.hidden_dim + config.edge_feature_dim + 1,
+                    config.hidden_dim,
+                ),
+                nn.SiLU(),
+                nn.Linear(config.hidden_dim, config.num_bond_types),
+            )
+            if config.num_formal_charge_types is None:
+                self.formal_charge_embedding = None
+                self.chirality_embedding = None
+                self.formal_charge_head = None
+                self.chirality_head = None
+            else:
+                if config.num_chirality_types is None:
+                    raise ValueError("num_chirality_types is required")
+                self.formal_charge_embedding = nn.Embedding(
+                    config.num_formal_charge_types,
+                    config.hidden_dim,
+                )
+                self.chirality_embedding = nn.Embedding(
+                    config.num_chirality_types,
+                    config.hidden_dim,
+                )
+                self.formal_charge_head = nn.Linear(
+                    config.hidden_dim,
+                    config.num_formal_charge_types,
+                )
+                self.chirality_head = nn.Linear(
+                    config.hidden_dim,
+                    config.num_chirality_types,
+                )
         self.layers = nn.ModuleList(
             EGNNMessageLayer(
                 hidden_dim=config.hidden_dim,
@@ -239,6 +400,32 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
                 raise ValueError(
                     "state descriptor dimension does not match model config"
                 )
+        if self.config.num_atom_types is not None:
+            if state.atom_types is None or state.bond_types is None:
+                raise ValueError(
+                    "joint chemical denoiser requires state atom_types and bond_types"
+                )
+            valid_atom_types = state.atom_types.masked_select(state.mask.atom_mask)
+            if bool((valid_atom_types >= self.config.num_atom_types).any()):
+                raise ValueError("state atom_types exceed the configured vocabulary")
+            if self.config.num_bond_types is None:
+                raise ValueError("num_bond_types is required for chemical denoising")
+            valid_bond_types = state.bond_types.masked_select(state.mask.edge_mask)
+            if bool((valid_bond_types >= self.config.num_bond_types).any()):
+                raise ValueError("state bond_types exceed the configured vocabulary")
+        if self.config.num_formal_charge_types is not None:
+            if state.formal_charge_types is None or state.chiralities is None:
+                raise ValueError(
+                    "Route-A denoiser requires formal_charge_types and chiralities"
+                )
+            valid_charges = state.formal_charge_types.masked_select(state.mask.atom_mask)
+            valid_chiralities = state.chiralities.masked_select(state.mask.atom_mask)
+            if bool((valid_charges >= self.config.num_formal_charge_types).any()):
+                raise ValueError("formal_charge_types exceed the configured vocabulary")
+            if self.config.num_chirality_types is None:
+                raise RuntimeError("num_chirality_types is unavailable")
+            if bool((valid_chiralities >= self.config.num_chirality_types).any()):
+                raise ValueError("chiralities exceed the configured vocabulary")
 
     def forward(
         self,
@@ -263,6 +450,24 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
 
         atom_mask = state.mask.atom_mask
         node_features = self.atom_projection(state.atom_features)
+        edge_features = state.edge_features
+        if self.atom_type_embedding is not None:
+            if state.atom_types is None or state.bond_types is None:
+                raise ValueError("joint chemical state labels are required")
+            if self.bond_type_embedding is None:
+                raise RuntimeError("bond type embedding is unavailable")
+            node_features = node_features + self.atom_type_embedding(state.atom_types)
+            edge_features = edge_features + self.bond_type_embedding(state.bond_types)
+            if self.formal_charge_embedding is not None:
+                if state.formal_charge_types is None or state.chiralities is None:
+                    raise ValueError("Route-A atom labels are required")
+                if self.chirality_embedding is None:
+                    raise RuntimeError("chirality embedding is unavailable")
+                node_features = (
+                    node_features
+                    + self.formal_charge_embedding(state.formal_charge_types)
+                    + self.chirality_embedding(state.chiralities)
+                )
         time_condition = self.timestep_projection(
             self.timestep_embedding(normalized_timestep)
         )
@@ -307,7 +512,7 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
                 node_features,
                 updated_coordinates,
                 state.edge_index,
-                state.edge_features,
+                edge_features,
                 atom_mask,
                 state.mask.edge_mask,
             )
@@ -319,7 +524,60 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
             coordinate_noise.sum(dim=1, keepdim=True) / valid_counts
         )
         coordinate_noise = (coordinate_noise - prediction_center) * coordinate_mask
-        output = DenoiserOutput(coordinate_noise=coordinate_noise)
+        atom_type_logits: Tensor | None = None
+        bond_type_logits: Tensor | None = None
+        formal_charge_logits: Tensor | None = None
+        chirality_logits: Tensor | None = None
+        if self.atom_type_head is not None:
+            if self.bond_type_head is None:
+                raise RuntimeError("bond type head is unavailable")
+            atom_type_logits = self.atom_type_head(node_features)
+            atom_type_logits = atom_type_logits * atom_mask.unsqueeze(-1).to(
+                atom_type_logits.dtype
+            )
+            batch_size, num_atoms, _ = node_features.shape
+            num_edges = state.edge_index.shape[-1]
+            batch_index = torch.arange(
+                batch_size,
+                device=state.edge_index.device,
+            ).unsqueeze(1).expand(batch_size, num_edges)
+            source = state.edge_index[:, 0, :].clamp(min=0, max=num_atoms - 1)
+            target = state.edge_index[:, 1, :].clamp(min=0, max=num_atoms - 1)
+            source_hidden = node_features[batch_index, source]
+            target_hidden = node_features[batch_index, target]
+            relative = updated_coordinates[batch_index, target] - updated_coordinates[
+                batch_index, source
+            ]
+            squared_distance = torch.sum(relative.square(), dim=-1, keepdim=True)
+            bond_type_logits = self.bond_type_head(
+                torch.cat(
+                    (
+                        source_hidden + target_hidden,
+                        torch.abs(source_hidden - target_hidden),
+                        edge_features,
+                        squared_distance,
+                    ),
+                    dim=-1,
+                )
+            )
+            bond_type_logits = bond_type_logits * state.mask.edge_mask.unsqueeze(
+                -1
+            ).to(bond_type_logits.dtype)
+            if self.formal_charge_head is not None:
+                if self.chirality_head is None:
+                    raise RuntimeError("chirality head is unavailable")
+                formal_charge_logits = self.formal_charge_head(node_features)
+                chirality_logits = self.chirality_head(node_features)
+                node_mask = atom_mask.unsqueeze(-1).to(node_features.dtype)
+                formal_charge_logits = formal_charge_logits * node_mask
+                chirality_logits = chirality_logits * node_mask
+        output = DenoiserOutput(
+            coordinate_noise=coordinate_noise,
+            atom_type_logits=atom_type_logits,
+            bond_type_logits=bond_type_logits,
+            formal_charge_logits=formal_charge_logits,
+            chirality_logits=chirality_logits,
+        )
         output.validate(state)
         return output
 

@@ -1,7 +1,17 @@
 diffusion:
+  mode: joint_chemical
   num_timesteps: 1000
   beta_schedule: linear
   beta_start: 0.0001
   beta_end: 0.02
   prediction_type: epsilon
   loss_reduction: mean
+  num_atom_types: 9
+  num_bond_types: 4
+  coordinate_loss_weight: 1.0
+  atom_loss_weight: 1.0
+  bond_loss_weight: 1.0
+
+chemical_vocabulary:
+  atom_types: [C, N, O, S, P, F, Cl, Br, I]
+  bond_types: [SINGLE, DOUBLE, TRIPLE, AROMATIC]

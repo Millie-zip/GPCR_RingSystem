@@ -1,4 +1,4 @@
-"""Train Stage 3 from a materialized real-data JSONL library."""
+"""Entrypoint for future training orchestration."""
 
 import argparse
 
@@ -7,14 +7,14 @@ from gpcr_ringgen.utils.io import load_yaml_config
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse the configuration path only; training details stay in-package."""
+    """Parse the YAML configuration path."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="Path to a YAML config.")
     return parser.parse_args()
 
 
 def main() -> None:
-    """Load configuration, train, and print checkpoint paths."""
+    """Load configuration and delegate to the training package."""
     args = parse_args()
     result = run_training(load_yaml_config(args.config))
     print(f"Training complete: {result.output_dir.resolve()}")
