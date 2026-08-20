@@ -1,4 +1,4 @@
-"""Entrypoint for future training orchestration."""
+"""Train Stage 3 from a materialized real-data JSONL library."""
 
 import argparse
 
@@ -14,9 +14,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Load configuration and delegate to the training package."""
+    """Load configuration, train, and print checkpoint paths."""
     args = parse_args()
-    run_training(load_yaml_config(args.config))
+    result = run_training(load_yaml_config(args.config))
+    print(f"Training complete: {result.output_dir.resolve()}")
+    print(f"Last checkpoint: {result.last_checkpoint.resolve()}")
+    print(f"Best checkpoint: {result.best_checkpoint.resolve()}")
 
 
 if __name__ == "__main__":

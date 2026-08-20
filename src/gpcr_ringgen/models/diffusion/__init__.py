@@ -9,6 +9,7 @@ from gpcr_ringgen.models.diffusion.schedules import (
 )
 from gpcr_ringgen.models.diffusion.state import (
     Stage3DiffusionState,
+    clean_stage3_state,
     initialize_stage3_state,
 )
 from gpcr_ringgen.models.diffusion.transitions import (
@@ -27,6 +28,7 @@ __all__ = [
     "ForwardDiffusionOutput",
     "NoiseSchedule",
     "Stage3DiffusionState",
+    "clean_stage3_state",
     "initialize_stage3_state",
     "load_ddpm_config",
     "project_zero_center_of_mass",

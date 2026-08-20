@@ -190,8 +190,8 @@ class DescriptorBatch:
     def validate(self) -> None:
         _require_rank("descriptor.values", self.values, 2)
         _require_floating("descriptor.values", self.values)
-        if self.values.shape[0] < 1 or self.values.shape[1] < 1:
-            raise ValueError("descriptor.values dimensions B and D must be positive.")
+        if self.values.shape[0] < 1:
+            raise ValueError("descriptor.values batch dimension must be positive.")
 
 
 @dataclass
@@ -225,8 +225,8 @@ class PocketBatch:
             raise ValueError("pocket.coordinates must have shape [B, P, 3].")
         if (batch_size, num_points) != (feature_batch, feature_points):
             raise ValueError("Pocket coordinates and features dimensions differ.")
-        if batch_size < 1 or num_points < 1 or feature_dim < 1:
-            raise ValueError("Pocket dimensions B, P, and F_pocket must be positive.")
+        if batch_size < 1 or num_points < 0 or feature_dim < 1:
+            raise ValueError("Pocket dimensions B and F_pocket must be positive; P may be zero.")
         if self.features.device != self.coordinates.device:
             raise ValueError("Pocket coordinates and features must share a device.")
         if self.features.dtype != self.coordinates.dtype:

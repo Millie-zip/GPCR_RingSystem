@@ -1,0 +1,46 @@
+# Replace the two data paths and output_dir before running scripts/train.py.
+data:
+  path: /absolute/path/to/stage3_training.jsonl
+  feature_manifest: configs/data/stage3_feature_manifest.yaml
+  max_records: null
+
+training:
+  epochs: 100
+  batch_size: 32
+  num_workers: 0
+  train_fraction: 0.9
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  grad_clip_norm: 1.0
+  output_dir: runs/stage3_real
+  resume_from: null
+
+device:
+  type: auto
+  dtype: float32
+
+seed: 42
+
+field_conditioning:
+  mode: none
+  channels: []
+
+diffusion:
+  num_timesteps: 1000
+  beta_schedule: linear
+  beta_start: 0.0001
+  beta_end: 0.02
+  prediction_type: epsilon
+  loss_reduction: mean
+
+model:
+  type: egnn_denoiser
+  atom_feature_dim: 16
+  edge_feature_dim: 8
+  hidden_dim: 64
+  num_layers: 3
+  timestep_embedding_dim: 32
+  coordinate_scale: 0.1
+  epsilon: 1.0e-8
+  max_time_period: 10000.0
+  descriptor_dim: null
