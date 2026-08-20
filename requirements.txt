@@ -16,3 +16,5 @@ tqdm>=4.66
 #
 # Development and test dependencies:
 pytest>=7.4
+# Required by scripts/preprocess.py for SMILES -> 3D conformers.
+rdkit>=2023.9

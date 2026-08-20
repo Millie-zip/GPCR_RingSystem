@@ -1,4 +1,4 @@
-"""Train the Stage 3 model from a converted real-data JSONL asset library."""
+"""Entrypoint for future training orchestration."""
 
 import argparse
 
@@ -14,7 +14,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Load configuration, train, and print the artifact paths."""
+    """Load configuration and delegate to the training package."""
     args = parse_args()
     result = run_training(load_yaml_config(args.config))
     print(f"Training complete: {result.output_dir.resolve()}")

@@ -277,7 +277,7 @@ class PocketBatch:
         if (batch_size, num_points) != (feature_batch, feature_points):
             raise ValueError("Pocket coordinates and features dimensions differ.")
         if batch_size < 1 or num_points < 0 or feature_dim < 1:
-            raise ValueError("Pocket batch and feature dimensions must be valid.")
+            raise ValueError("Pocket dimensions B and F_pocket must be positive; P may be zero.")
         if self.features.device != self.coordinates.device:
             raise ValueError("Pocket coordinates and features must share a device.")
         if self.features.dtype != self.coordinates.dtype:

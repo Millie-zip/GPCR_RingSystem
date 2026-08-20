@@ -1,0 +1,33 @@
+schema_version: stage3_feature_manifest_v1
+
+# These columns are extracted deterministically from atom_facts_json and
+# bond_facts_json. Their order is part of the checkpoint/data contract.
+atom_features:
+  - element_C
+  - element_N
+  - element_O
+  - element_S
+  - element_P
+  - element_F
+  - element_Cl
+  - element_Br
+  - element_I
+  - formal_charge
+  - aromatic
+  - degree_scaled
+  - total_h_scaled
+  - ring_atom
+  - atomic_num_scaled
+  - chiral
+
+edge_features:
+  - bond_SINGLE
+  - bond_DOUBLE
+  - bond_TRIPLE
+  - bond_AROMATIC
+  - aromatic
+  - conjugated
+  - ring_bond
+  - stereo
+
+descriptor_features: []

@@ -10,6 +10,7 @@ from gpcr_ringgen.training.losses import (
     masked_coordinate_mse,
 )
 from gpcr_ringgen.training.trainer import Trainer, TrainingResult, run_training
+from gpcr_ringgen.training.inference import run_record_inference
 
 __all__ = [
     "JointDiffusionLoss",
@@ -22,4 +23,5 @@ __all__ = [
     "masked_categorical_cross_entropy",
     "masked_coordinate_mse",
     "run_training",
+    "run_record_inference",
 ]

@@ -14,9 +14,34 @@
 > chirality remain fixed conditions. The independent legacy inference Pipeline
 > remains available for fixed topology and descriptor inputs.
 
-Ring processing, a complete denoiser training loop, sampling guidance, docking,
-chemical evaluation, and molecule export are not implemented. The Dummy
-Pipeline remains a deterministic workflow for checking software boundaries.
+The real-data Stage 3 path is now available: an immutable source SQLite
+database can be converted to a QC-audited 3D asset DB, materialized into
+versioned JSONL records, trained with the existing DDPM denoiser, and sampled
+again from a saved checkpoint. Training is pocket-disabled and does not apply
+ring/geometry weak constraints; those masks are retained for audit. Sampling
+guidance, docking, chemical evaluation, and molecule export remain separate
+future work.
+
+## Real-data training path
+
+Create the independent assets and JSONL records with the GPCR interpreter:
+
+    python scripts/preprocess.py \
+      --source-db <source.db> \
+      --output-db <stage3_assets.db> \
+      --training-jsonl <stage3_training.jsonl> \
+      --manifest configs/data/stage3_feature_manifest.yaml \
+      --progress <stage3_progress.jsonl>
+
+Then prepare a YAML from the model and diffusion examples, set
+`data.path`, `data.feature_manifest`, `training.output_dir`, and
+`field_conditioning.mode: none`, and run:
+
+    python scripts/train.py --config <training.yaml>
+
+The resulting `best.ckpt` can be used with `scripts/infer.py` for
+pocket-disabled inference from a record in the same JSONL library. The
+checkpoint stores and verifies the feature-manifest hash.
 
 ## Repository layout
 
