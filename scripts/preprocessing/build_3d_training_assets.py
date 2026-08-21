@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from gpcr_ringgen.preprocessing.diffusion_dataset import (
+from gpcr_ringgen.data.three_d_assets import (
     ThreeDAssetBuilderConfig,
     build_3d_assets,
 )

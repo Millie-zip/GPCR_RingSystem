@@ -70,20 +70,38 @@ def materialize_training_jsonl(
     manifest_hash = _manifest_hash(manifest_file)
     failure_path = output_path.with_suffix(output_path.suffix + ".failures.jsonl")
     try:
+        asset_columns = {
+            str(row[1])
+            for row in connection.execute('PRAGMA table_info("molecule_3d")')
+        }
+        sample_id_column = "m.sample_id" if "sample_id" in asset_columns else "NULL"
         query = """
             SELECT m.source_part,m.molecule_uid,m.coordinates_json,m.atom_facts_json,m.bond_facts_json,
-                   m.generation_method,r.ring_system_uid,r.ring_atom_mask_json,r.noise_mask_json,r.ring_bond_indices_json
+                   m.generation_method,{sample_id_column},r.ring_system_uid,
+                   r.ring_atom_mask_json,r.noise_mask_json,r.ring_bond_indices_json
             FROM molecule_3d m JOIN ring_system_3d r
               ON r.source_part=m.source_part AND r.molecule_uid=m.molecule_uid
             WHERE m.status='PASS' AND r.status='PASS'
             ORDER BY m.source_part,m.molecule_uid,r.ring_system_uid
-        """
+        """.format(sample_id_column=sample_id_column)
         with partial.open("w", encoding="utf-8") as output, failure_path.open("w", encoding="utf-8") as failures:
             for row in connection.execute(query):
                 if limit is not None and written >= limit:
                     break
                 try:
-                    source_part, molecule_uid, coordinates_json, atom_json, bond_json, method, ring_uid, ring_mask_json, noise_mask_json, ring_bond_indices_json = row
+                    (
+                        source_part,
+                        molecule_uid,
+                        coordinates_json,
+                        atom_json,
+                        bond_json,
+                        method,
+                        source_sample_id,
+                        ring_uid,
+                        ring_mask_json,
+                        noise_mask_json,
+                        ring_bond_indices_json,
+                    ) = row
                     atom_facts = sorted(_facts(atom_json), key=lambda item: _index(item, ("atom_index", "index")))
                     bond_facts = _facts(bond_json)
                     coordinates = json.loads(coordinates_json)
@@ -115,7 +133,11 @@ def materialize_training_jsonl(
                         atom_features.append(manifest.atom_vector(atom, ring_atom=bool(ring_mask[index])))
                     edge_index = [[pair[0] for pair in edge_pairs], [pair[1] for pair in edge_pairs]]
                     record = TrainingRecord(
-                        sample_id=f"{source_part}:{molecule_uid}:{ring_uid}",
+                        sample_id=(
+                            str(source_sample_id)
+                            if isinstance(source_sample_id, str) and source_sample_id.strip()
+                            else f"{source_part}:{molecule_uid}:{ring_uid}"
+                        ),
                         atom_features=atom_features,
                         edge_index=edge_index,
                         edge_features=edge_features,
