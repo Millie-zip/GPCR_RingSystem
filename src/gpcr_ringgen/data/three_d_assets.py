@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,6 +74,47 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
     if not rows:
         raise ValueError(f"source table not found: {table}")
     return {str(row[1]) for row in rows}
+
+
+def _table_names(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def _decode_float32_coordinates(value: object, atom_count: int) -> list[list[float]]:
+    """Decode the raw little-endian ``[N, 3]`` coordinates used by model DBs."""
+
+    if not isinstance(value, (bytes, bytearray, memoryview)):
+        raise ValueError("x0 must be a raw byte buffer")
+    expected_values = atom_count * 3
+    raw = bytes(value)
+    if len(raw) != expected_values * 4:
+        raise ValueError(
+            f"x0 byte length must be {expected_values * 4} for {atom_count} atoms"
+        )
+    values = struct.unpack(f"<{expected_values}f", raw)
+    coordinates = [
+        [float(values[offset]), float(values[offset + 1]), float(values[offset + 2])]
+        for offset in range(0, expected_values, 3)
+    ]
+    if not all(math.isfinite(item) for row in coordinates for item in row):
+        raise ValueError("x0 contains NaN or Inf")
+    return coordinates
+
+
+def _decode_uint8_mask(value: object, atom_count: int, name: str) -> list[bool]:
+    """Decode a raw uint8 mask and reject malformed values early."""
+
+    if not isinstance(value, (bytes, bytearray, memoryview)):
+        raise ValueError(f"{name} must be a raw byte buffer")
+    raw = bytes(value)
+    if len(raw) != atom_count:
+        raise ValueError(f"{name} byte length must equal num_atoms ({atom_count})")
+    if any(item not in (0, 1) for item in raw):
+        raise ValueError(f"{name} must contain only uint8 values 0 or 1")
+    return [bool(item) for item in raw]
 
 
 def _ring_indices(value: object, atom_count: int) -> list[int]:
@@ -169,6 +211,7 @@ def _create_schema(output: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS build_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS molecule_3d (
             source_part TEXT NOT NULL, molecule_uid TEXT NOT NULL, original_smiles TEXT NOT NULL,
+            sample_id TEXT,
             coordinates_json TEXT, source_to_rdkit_atom_map_json TEXT,
             atom_facts_json TEXT NOT NULL, bond_facts_json TEXT NOT NULL,
             qc_json TEXT, generation_method TEXT, status TEXT NOT NULL,
@@ -182,9 +225,85 @@ def _create_schema(output: sqlite3.Connection) -> None:
         );
         """
     )
+    if "sample_id" not in _table_columns(output, "molecule_3d"):
+        output.execute("ALTER TABLE molecule_3d ADD COLUMN sample_id TEXT")
 
 
 def _source_rows(source: sqlite3.Connection, config: ThreeDAssetBuilderConfig) -> Iterable[tuple[Any, ...]]:
+    """Yield a normalized row for both source-library and model-input DBs.
+
+    The model-input DB format stores one already-QC'd molecule per row in
+    ``molecules`` and keeps coordinates/masks as raw blobs.  It has no separate
+    ring-system table, so that schema is adapted here rather than forcing a
+    lossy intermediate database rewrite.
+    """
+
+    table_names = _table_names(source)
+    if config.molecule_table == "selected_molecules" and "molecules" in table_names:
+        molecule_columns = _table_columns(source, "molecules")
+        required = {
+            "source_part",
+            "molecule_uid",
+            "canonical_isomeric_smiles",
+            "num_atoms",
+            "x0",
+            "ring_atom_mask",
+            "noise_mask",
+            "atom_facts_json",
+            "bond_facts_json",
+            "ring_system_uid",
+            "sample_id",
+        }
+        if not required.issubset(molecule_columns):
+            raise ValueError(
+                "molecules is missing " + repr(sorted(required - molecule_columns))
+            )
+        yield from (
+            (
+                str(source_part),
+                str(molecule_uid),
+                str(smiles),
+                atom_json,
+                bond_json,
+                str(ring_uid),
+                None if sample_id is None else str(sample_id),
+                json.dumps(
+                    [
+                        index
+                        for index, is_ring in enumerate(
+                            _decode_uint8_mask(ring_mask, int(num_atoms), "ring_atom_mask")
+                        )
+                        if is_ring
+                    ]
+                ),
+                "[]",
+                _decode_float32_coordinates(x0, int(num_atoms)),
+                _decode_uint8_mask(noise_mask, int(num_atoms), "noise_mask"),
+            )
+            for (
+                source_part,
+                molecule_uid,
+                smiles,
+                num_atoms,
+                x0,
+                ring_mask,
+                noise_mask,
+                atom_json,
+                bond_json,
+                ring_uid,
+                sample_id,
+            ) in source.execute(
+                """
+                SELECT source_part,molecule_uid,canonical_isomeric_smiles,
+                       num_atoms,x0,ring_atom_mask,noise_mask,
+                       atom_facts_json,bond_facts_json,ring_system_uid,sample_id
+                FROM molecules
+                ORDER BY test_id
+                """
+            )
+        )
+        return
+
     molecule_columns = _table_columns(source, config.molecule_table)
     ring_columns = _table_columns(source, config.ring_table)
     required_molecule = {"source_part", "molecule_uid", "original_smiles", "atom_facts_json", "bond_facts_json"}
@@ -203,7 +322,8 @@ def _source_rows(source: sqlite3.Connection, config: ThreeDAssetBuilderConfig) -
           ON r.source_part=m.source_part AND r.molecule_uid=m.molecule_uid
         ORDER BY m.source_part,m.molecule_uid,r.ring_system_uid
     """
-    yield from source.execute(query)
+    for row in source.execute(query):
+        yield (row[0], row[1], row[2], row[3], row[4], row[5], None, row[6], row[7], None, None)
 
 
 def build_3d_assets(config: ThreeDAssetBuilderConfig) -> dict[str, Any]:
@@ -225,7 +345,19 @@ def build_3d_assets(config: ThreeDAssetBuilderConfig) -> dict[str, Any]:
         output.execute("INSERT OR REPLACE INTO build_metadata VALUES (?,?)", ("started_at_utc", _utc_now()))
         output.commit()
         for row in _source_rows(source, config):
-            source_part, molecule_uid, smiles, atom_json, bond_json, ring_uid, ring_atoms_json, ring_bonds_json = row
+            (
+                source_part,
+                molecule_uid,
+                smiles,
+                atom_json,
+                bond_json,
+                ring_uid,
+                sample_id,
+                ring_atoms_json,
+                ring_bonds_json,
+                source_coordinates,
+                _source_noise_mask,
+            ) = row
             key = (str(source_part), str(molecule_uid))
             if key != current_key:
                 if config.limit is not None and molecule_count >= config.limit:
@@ -241,19 +373,57 @@ def build_3d_assets(config: ThreeDAssetBuilderConfig) -> dict[str, Any]:
                     try:
                         atom_facts = _facts(atom_json, "atom_facts_json")
                         bond_facts = _facts(bond_json, "bond_facts_json")
-                        coordinates, mapping, method = _generate_coordinates(str(smiles), config.seed)
+                        if source_coordinates is None:
+                            coordinates, mapping, method = _generate_coordinates(
+                                str(smiles), config.seed
+                            )
+                        else:
+                            coordinates = source_coordinates
+                            mapping = list(range(len(coordinates)))
+                            method = "source_x0"
                         ordered_atoms = sorted(atom_facts, key=lambda item: _index(item, ("atom_index", "index"), "atom"))
                         if len(ordered_atoms) != len(coordinates):
                             raise ValueError("source and RDKit atom counts differ")
-                        from rdkit import Chem
-                        rdkit_molecule = Chem.MolFromSmiles(str(smiles))
-                        if rdkit_molecule is None:
-                            raise ValueError("SMILES could not be parsed by RDKit")
-                        if [_element(row) for row in ordered_atoms] != [normalize_element(atom.GetSymbol()) for atom in rdkit_molecule.GetAtoms()]:
-                            raise ValueError("source atom order cannot be mapped to RDKit order")
+                        if source_coordinates is None:
+                            from rdkit import Chem
+
+                            rdkit_molecule = Chem.MolFromSmiles(str(smiles))
+                            if rdkit_molecule is None:
+                                raise ValueError("SMILES could not be parsed by RDKit")
+                            if [_element(row) for row in ordered_atoms] != [
+                                normalize_element(atom.GetSymbol())
+                                for atom in rdkit_molecule.GetAtoms()
+                            ]:
+                                raise ValueError(
+                                    "source atom order cannot be mapped to RDKit order"
+                                )
                         qc = _validate_graph(atom_facts, bond_facts, coordinates)
                         cached = {"status": "PASS", "coordinates": coordinates, "mapping": mapping, "atom_facts": atom_facts, "bond_facts": bond_facts, "qc": qc, "method": method}
-                        output.execute("INSERT OR REPLACE INTO molecule_3d VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (source_part,molecule_uid,str(smiles),json.dumps(coordinates),json.dumps(mapping),json.dumps(atom_facts),json.dumps(bond_facts),json.dumps(qc,sort_keys=True),method,"PASS",None,None,None))
+                        output.execute(
+                            """
+                            INSERT OR REPLACE INTO molecule_3d
+                            (source_part,molecule_uid,original_smiles,sample_id,
+                             coordinates_json,source_to_rdkit_atom_map_json,
+                             atom_facts_json,bond_facts_json,qc_json,generation_method,
+                             status,error_code,error_text)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            """,
+                            (
+                                source_part,
+                                molecule_uid,
+                                str(smiles),
+                                sample_id,
+                                json.dumps(coordinates),
+                                json.dumps(mapping),
+                                json.dumps(atom_facts),
+                                json.dumps(bond_facts),
+                                json.dumps(qc, sort_keys=True),
+                                method,
+                                "PASS",
+                                None,
+                                None,
+                            ),
+                        )
                         molecule_pass += 1
                     except Exception as exc:
                         cached = {"status": "FAIL"}
@@ -269,6 +439,9 @@ def build_3d_assets(config: ThreeDAssetBuilderConfig) -> dict[str, Any]:
                 indices = _ring_indices(ring_atoms_json, cached["qc"]["atom_count"])
                 ring_set = set(indices)
                 ring_mask = [index in ring_set for index in range(cached["qc"]["atom_count"])]
+                # Validate the upstream mask above, but persist the project
+                # contract's ring-external audit mask.  The raw model-input
+                # format uses ``noise_mask`` for an all-atom diffusion mask.
                 noise_mask = [not value for value in ring_mask]
                 if not any(noise_mask):
                     raise ValueError("ring system has no ring-external atom")
