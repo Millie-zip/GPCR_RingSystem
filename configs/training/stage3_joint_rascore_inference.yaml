@@ -1,0 +1,57 @@
+# Pocket-disabled joint inference with an independently trained RA reward model.
+data:
+  path: /absolute/path/to/stage3_training.jsonl
+  feature_manifest: configs/data/stage3_joint_feature_manifest.yaml
+
+inference:
+  checkpoint: /absolute/path/to/stage3_generator/best.ckpt
+  record_index: 0
+  output: outputs/stage3_rascore_reward.json
+
+device:
+  type: auto
+  dtype: float32
+
+seed: 42
+
+chemical_vocabulary:
+  atom_types: [C, N, O, S, P, F, Cl, Br, I, H, B, Si]
+  bond_types: [SINGLE, DOUBLE, TRIPLE, AROMATIC]
+
+model:
+  type: egnn_denoiser
+  atom_feature_dim: 3
+  edge_feature_dim: 1
+  hidden_dim: 64
+  num_layers: 3
+  timestep_embedding_dim: 32
+  coordinate_scale: 0.1
+  epsilon: 1.0e-8
+  max_time_period: 10000.0
+  descriptor_dim: null
+  num_atom_types: 12
+  num_bond_types: 4
+
+diffusion:
+  mode: joint_chemical
+  num_timesteps: 1000
+  beta_schedule: linear
+  beta_start: 0.0001
+  beta_end: 0.02
+  prediction_type: epsilon
+  loss_reduction: mean
+  num_atom_types: 12
+  num_bond_types: 4
+
+field_conditioning:
+  mode: none
+  channels: []
+
+ra_reward:
+  enabled: true
+  checkpoint: /absolute/path/to/ra_reward/best.ckpt
+  guidance_scale: 0.8
+  start_ratio: 0.5
+  eval_every: 1
+  temperature: 1.0
+  gradient_clip_norm: 1.0

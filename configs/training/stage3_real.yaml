@@ -35,7 +35,7 @@ diffusion:
 
 model:
   type: egnn_denoiser
-  atom_feature_dim: 16
+  atom_feature_dim: 19
   edge_feature_dim: 8
   hidden_dim: 64
   num_layers: 3

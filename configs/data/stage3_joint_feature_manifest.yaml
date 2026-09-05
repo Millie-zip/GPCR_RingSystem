@@ -1,0 +1,14 @@
+schema_version: stage3_joint_feature_manifest_v1
+
+# Joint chemical diffusion predicts atom_types and bond_types separately.
+# Keep only fixed/topological conditions here; clean chemical labels must not
+# be duplicated in atom_features or edge_features.
+atom_features:
+  - formal_charge
+  - ring_atom
+  - chiral
+
+edge_features:
+  - ring_bond
+
+descriptor_features: []

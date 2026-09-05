@@ -11,14 +11,22 @@ import torch
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
 from gpcr_ringgen.data import FeatureManifest, JsonlMolecularDataset, collate_molecules
-from gpcr_ringgen.models.diffusion import DDPMConfig, DDPMNoiseSchedule
+from gpcr_ringgen.models.diffusion import (
+    ChemicalVocabulary,
+    DDPMConfig,
+    DDPMNoiseSchedule,
+)
 from gpcr_ringgen.models.equivariant import (
     EquivariantDenoiserBackbone,
     EquivariantDenoiserConfig,
     FieldConditionedEquivariantDenoiser,
     FieldConditioningConfig,
 )
-from gpcr_ringgen.sampling import DDPMStage3Sampler
+from gpcr_ringgen.sampling import (
+    DDPMStage3Sampler,
+    JointDDPMStage3Sampler,
+    load_rascore_reward_guidance,
+)
 from gpcr_ringgen.utils.device import resolve_device
 from gpcr_ringgen.utils.io import save_json
 from gpcr_ringgen.utils.seed import set_seed
@@ -64,8 +72,37 @@ def run_record_inference(config: Mapping[str, Any]) -> Path:
     if isinstance(checkpoint, Mapping) and checkpoint.get("feature_manifest_hash") != expected_hash:
         raise ConfigurationError("checkpoint feature manifest does not match inference data")
     model.load_state_dict(_state_dict(checkpoint), strict=True)
-    schedule = DDPMNoiseSchedule(DDPMConfig.from_mapping(config))
-    output = DDPMStage3Sampler(schedule).sample(stage3_input, model, seed=int(config["seed"]), return_trajectory=False)
+    diffusion_config = DDPMConfig.from_mapping(config)
+    schedule = DDPMNoiseSchedule(diffusion_config)
+    reward_guidance = None
+    if config.get("ra_reward") is not None:
+        if diffusion_config.mode != "joint_chemical":
+            raise ConfigurationError(
+                "ra_reward guidance requires diffusion.mode=joint_chemical"
+            )
+        if model_config.num_atom_types is None or model_config.num_bond_types is None:
+            raise ConfigurationError("joint inference requires model chemical vocabularies")
+        reward_guidance = load_rascore_reward_guidance(
+            config,
+            device=device,
+            dtype=dtype,
+            atom_feature_dim=model_config.atom_feature_dim,
+            edge_feature_dim=model_config.edge_feature_dim,
+            num_atom_types=model_config.num_atom_types,
+            num_bond_types=model_config.num_bond_types,
+        )
+    sampler = (
+        JointDDPMStage3Sampler(schedule)
+        if diffusion_config.mode == "joint_chemical"
+        else DDPMStage3Sampler(schedule)
+    )
+    sample_kwargs: dict[str, Any] = {
+        "seed": int(config["seed"]),
+        "return_trajectory": False,
+    }
+    if diffusion_config.mode == "joint_chemical":
+        sample_kwargs["reward_guidance"] = reward_guidance
+    output = sampler.sample(stage3_input, model, **sample_kwargs)
     state = output.final_state
     payload = {
         "pipeline": "stage3_pocket_disabled_record_inference",
@@ -78,6 +115,14 @@ def run_record_inference(config: Mapping[str, Any]) -> Path:
         "edge_mask": state.mask.edge_mask[0].detach().cpu().tolist(),
         "metadata": record.metadata,
     }
+    if state.atom_types is not None and state.bond_types is not None:
+        vocabulary = ChemicalVocabulary.from_mapping(config)
+        payload["atom_type_ids"] = state.atom_types[0].detach().cpu().tolist()
+        payload["bond_type_ids"] = state.bond_types[0].detach().cpu().tolist()
+        payload["chemical_vocabulary"] = {
+            "atom_types": list(vocabulary.atom_types),
+            "bond_types": list(vocabulary.bond_types),
+        }
     output_path = Path(str(inference["output"]))
     save_json(payload, output_path)
     return output_path

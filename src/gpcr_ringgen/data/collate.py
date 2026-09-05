@@ -45,6 +45,8 @@ def collate_molecules(
     edge_features = torch.zeros((batch_size, max_edges, edge_width), dtype=dtype, device=target)
     edge_index = torch.zeros((batch_size, 2, max_edges), dtype=torch.long, device=target)
     coordinates = torch.zeros((batch_size, max_atoms, 3), dtype=dtype, device=target)
+    atom_types = torch.zeros((batch_size, max_atoms), dtype=torch.long, device=target)
+    bond_types = torch.zeros((batch_size, max_edges), dtype=torch.long, device=target)
     atom_mask = torch.zeros((batch_size, max_atoms), dtype=torch.bool, device=target)
     edge_mask = torch.zeros((batch_size, max_edges), dtype=torch.bool, device=target)
     descriptor = torch.zeros((batch_size, descriptor_width), dtype=dtype, device=target)
@@ -54,10 +56,12 @@ def collate_molecules(
         edges = len(record.edge_index[0])
         atom_features[batch_index, :atoms] = torch.tensor(record.atom_features, dtype=dtype, device=target)
         coordinates[batch_index, :atoms] = torch.tensor(record.coordinates, dtype=dtype, device=target)
+        atom_types[batch_index, :atoms] = torch.tensor(record.atom_types, dtype=torch.long, device=target)
         atom_mask[batch_index, :atoms] = True
         if edges:
             edge_index[batch_index, :, :edges] = torch.tensor(record.edge_index, dtype=torch.long, device=target)
             edge_features[batch_index, :edges] = torch.tensor(record.edge_features, dtype=dtype, device=target)
+            bond_types[batch_index, :edges] = torch.tensor(record.bond_types, dtype=torch.long, device=target)
             edge_mask[batch_index, :edges] = True
         if descriptor_width:
             descriptor[batch_index] = torch.tensor(record.descriptor, dtype=dtype, device=target)
@@ -68,6 +72,8 @@ def collate_molecules(
             edge_index=edge_index,
             edge_features=edge_features,
             coordinates=coordinates,
+            atom_types=atom_types,
+            bond_types=bond_types,
         ),
         mask=BatchMask(atom_mask=atom_mask, edge_mask=edge_mask),
         metadata=BatchMetadata(

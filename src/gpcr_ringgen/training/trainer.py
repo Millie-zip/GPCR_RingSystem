@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,17 +16,28 @@ from torch.utils.data import DataLoader
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
 from gpcr_ringgen.data import FeatureManifest, JsonlMolecularDataset, collate_molecules
-from gpcr_ringgen.models.diffusion import DDPMConfig, DDPMNoiseSchedule, clean_stage3_state, q_sample, sample_timesteps
+from gpcr_ringgen.models.diffusion import (
+    DDPMConfig,
+    DDPMNoiseSchedule,
+    ChemicalVocabulary,
+    clean_stage3_state,
+    q_sample,
+    q_sample_joint,
+    sample_timesteps,
+)
 from gpcr_ringgen.models.equivariant import (
     EquivariantDenoiserBackbone,
     EquivariantDenoiserConfig,
     FieldConditionedEquivariantDenoiser,
     FieldConditioningConfig,
 )
-from gpcr_ringgen.training.losses import NoisePredictionLoss
+from gpcr_ringgen.training.losses import JointDiffusionLoss, NoisePredictionLoss
 from gpcr_ringgen.utils.device import resolve_device
 from gpcr_ringgen.utils.io import save_json
 from gpcr_ringgen.utils.seed import make_torch_generator, set_seed
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -100,6 +112,35 @@ def _validate_config(config: Mapping[str, Any]) -> dict[str, Any]:
     if model_config.descriptor_dim is not None:
         raise ConfigurationError("model.descriptor_dim must be null for pocket-disabled training")
     ddpm = DDPMConfig.from_mapping(config)
+    if ddpm.mode == "joint_chemical":
+        if manifest.schema_version != "stage3_joint_feature_manifest_v1":
+            raise ConfigurationError(
+                "joint_chemical training requires "
+                "stage3_joint_feature_manifest_v1; clean chemical labels "
+                "must not be present in atom or edge features"
+            )
+        if model_config.num_atom_types != ddpm.num_atom_types:
+            raise ConfigurationError(
+                "model.num_atom_types must match diffusion.num_atom_types"
+            )
+        if model_config.num_bond_types != ddpm.num_bond_types:
+            raise ConfigurationError(
+                "model.num_bond_types must match diffusion.num_bond_types"
+            )
+        try:
+            vocabulary = ChemicalVocabulary.from_mapping(config)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ConfigurationError(
+                f"joint_chemical training requires a valid chemical_vocabulary: {exc}"
+            ) from exc
+        if vocabulary.num_atom_types != ddpm.num_atom_types:
+            raise ConfigurationError(
+                "chemical_vocabulary.atom_types must match diffusion.num_atom_types"
+            )
+        if vocabulary.num_bond_types != ddpm.num_bond_types:
+            raise ConfigurationError(
+                "chemical_vocabulary.bond_types must match diffusion.num_bond_types"
+            )
     if not (0.0 < float(training.get("train_fraction", 0.9)) < 1.0):
         raise ConfigurationError("training.train_fraction must be between 0 and 1")
     return {
@@ -120,6 +161,16 @@ def _validate_config(config: Mapping[str, Any]) -> dict[str, Any]:
         "dtype": torch.float32 if device_config["dtype"] == "float32" else torch.float64,
         "schedule": DDPMNoiseSchedule(ddpm),
         "model_config": model_config,
+        "joint_loss": (
+            None
+            if ddpm.mode != "joint_chemical"
+            else JointDiffusionLoss(
+                coordinate_weight=ddpm.coordinate_loss_weight,
+                atom_weight=ddpm.atom_loss_weight,
+                bond_weight=ddpm.bond_loss_weight,
+                reduction=ddpm.loss_reduction,
+            )
+        ),
     }
 
 
@@ -131,9 +182,21 @@ def _make_model(options: Mapping[str, Any]) -> nn.Module:
     ).to(device=options["device"], dtype=options["dtype"])
 
 
-def _batch_loss(model: nn.Module, stage3_input, schedule: DDPMNoiseSchedule, generator: torch.Generator) -> Tensor:
+def _batch_loss(
+    model: nn.Module,
+    stage3_input,
+    schedule: DDPMNoiseSchedule,
+    generator: torch.Generator,
+    joint_loss: JointDiffusionLoss | None = None,
+) -> Tensor:
     clean = clean_stage3_state(stage3_input)
     timestep = sample_timesteps(clean.batch_size, schedule, device=clean.coordinates.device, generator=generator)
+    if schedule.config.mode == "joint_chemical":
+        if joint_loss is None:
+            raise RuntimeError("joint_chemical training loss is not initialized")
+        target = q_sample_joint(clean, timestep, schedule, generator=generator)
+        prediction = model(target.noisy_state, timestep)
+        return joint_loss(prediction, target).total
     target = q_sample(clean, timestep, schedule, generator=generator)
     prediction = model(target.noisy_state, timestep)
     return NoisePredictionLoss(reduction=schedule.config.loss_reduction)(
@@ -144,6 +207,16 @@ def _batch_loss(model: nn.Module, stage3_input, schedule: DDPMNoiseSchedule, gen
 
 
 def _epoch(model: nn.Module, loader: DataLoader, options: Mapping[str, Any], epoch: int, training: bool, optimizer: torch.optim.Optimizer | None) -> float:
+    phase = "train" if training else "validation"
+    total_batches = len(loader)
+    log_interval = max(1, total_batches // 10)
+    LOGGER.info(
+        "Epoch %d/%d %s phase started (batches=%d)",
+        epoch + 1,
+        options["epochs"],
+        phase,
+        total_batches,
+    )
     model.train(training)
     generator = make_torch_generator(int(options["seed"]) + epoch * 1000003 + int(not training), device=options["device"])
     total = 0.0
@@ -154,7 +227,13 @@ def _epoch(model: nn.Module, loader: DataLoader, options: Mapping[str, Any], epo
             stage3_input = collate_molecules(records, dtype=options["dtype"], device=options["device"])
             if optimizer is not None:
                 optimizer.zero_grad(set_to_none=True)
-            loss = _batch_loss(model, stage3_input, options["schedule"], generator)
+            loss = _batch_loss(
+                model,
+                stage3_input,
+                options["schedule"],
+                generator,
+                options["joint_loss"],
+            )
             if not bool(torch.isfinite(loss)):
                 raise RuntimeError("non-finite training loss")
             if optimizer is not None:
@@ -164,9 +243,27 @@ def _epoch(model: nn.Module, loader: DataLoader, options: Mapping[str, Any], epo
                 optimizer.step()
             total += float(loss.detach().cpu())
             batches += 1
+            if batches == 1 or batches % log_interval == 0 or batches == total_batches:
+                LOGGER.info(
+                    "Epoch %d/%d %s progress: batch %d/%d, loss=%.6f",
+                    epoch + 1,
+                    options["epochs"],
+                    phase,
+                    batches,
+                    total_batches,
+                    float(loss.detach().cpu()),
+                )
     if batches == 0:
         raise ConfigurationError("split produced no batches")
-    return total / batches
+    mean_loss = total / batches
+    LOGGER.info(
+        "Epoch %d/%d %s phase finished (mean_loss=%.6f)",
+        epoch + 1,
+        options["epochs"],
+        phase,
+        mean_loss,
+    )
+    return mean_loss
 
 
 def run_training(config: dict[str, Any]) -> TrainingResult:
@@ -180,14 +277,35 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
     options = _validate_config(config)
     options = {**options, "seed": config["seed"]}
     set_seed(int(config["seed"]))
+    LOGGER.info(
+        "Training setup: data=%s, device=%s, dtype=%s, epochs=%d, batch_size=%d",
+        options["data_path"].resolve(),
+        options["device"],
+        options["dtype"],
+        options["epochs"],
+        options["batch_size"],
+    )
     train_dataset = JsonlMolecularDataset(options["data_path"], max_records=options["max_records"], split="train", train_fraction=options["train_fraction"])
     validation_dataset = JsonlMolecularDataset(options["data_path"], max_records=options["max_records"], split="validation", train_fraction=options["train_fraction"])
     train_loader = DataLoader(train_dataset, batch_size=options["batch_size"], shuffle=False, num_workers=options["num_workers"], collate_fn=list)
     validation_loader = DataLoader(validation_dataset, batch_size=options["batch_size"], shuffle=False, num_workers=options["num_workers"], collate_fn=list)
+    LOGGER.info(
+        "Datasets ready: train_records=%d, validation_records=%d, train_batches=%d, validation_batches=%d",
+        len(train_dataset),
+        len(validation_dataset),
+        len(train_loader),
+        len(validation_loader),
+    )
     model = _make_model(options)
+    LOGGER.info(
+        "Model ready: parameters=%d, diffusion_mode=%s",
+        sum(parameter.numel() for parameter in model.parameters()),
+        options["schedule"].config.mode,
+    )
     optimizer = torch.optim.AdamW(model.parameters(), lr=options["learning_rate"], weight_decay=options["weight_decay"])
     start_epoch = 0
     if options["resume_from"] is not None:
+        LOGGER.info("Loading checkpoint: %s", options["resume_from"].resolve())
         checkpoint = torch.load(options["resume_from"], map_location=options["device"], weights_only=True)
         if not isinstance(checkpoint, Mapping) or not isinstance(checkpoint.get("model_state_dict"), Mapping):
             raise ConfigurationError("resume checkpoint lacks model_state_dict")
@@ -197,19 +315,29 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
         if isinstance(checkpoint.get("optimizer_state_dict"), Mapping):
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = int(checkpoint.get("epoch", -1)) + 1
+        LOGGER.info("Checkpoint loaded; resuming from epoch %d", start_epoch + 1)
     output_dir = options["output_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
     last_checkpoint = output_dir / "last.ckpt"
     best_checkpoint = output_dir / "best.ckpt"
     metrics_path = output_dir / "metrics.jsonl"
     best_validation = float("inf")
+    LOGGER.info("Training started: output_dir=%s, start_epoch=%d", output_dir.resolve(), start_epoch + 1)
     with metrics_path.open("a", encoding="utf-8") as metrics_file:
         for epoch in range(start_epoch, options["epochs"]):
+            LOGGER.info("Epoch %d/%d started", epoch + 1, options["epochs"])
             train_loss = _epoch(model, train_loader, options, epoch, True, optimizer)
             validation_loss = _epoch(model, validation_loader, options, epoch, False, None)
             metrics = {"epoch": epoch, "train_loss": train_loss, "validation_loss": validation_loss}
             metrics_file.write(json.dumps(metrics) + "\n")
             metrics_file.flush()
+            LOGGER.info(
+                "Epoch %d/%d metrics: train_loss=%.6f, validation_loss=%.6f",
+                epoch + 1,
+                options["epochs"],
+                train_loss,
+                validation_loss,
+            )
             payload = {
                 "checkpoint_version": 1,
                 "model_state_dict": model.state_dict(),
@@ -220,10 +348,24 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
                 "config": json.loads(json.dumps(config, default=str)),
             }
             torch.save(payload, last_checkpoint)
+            LOGGER.info("Epoch %d/%d checkpoint saved: %s", epoch + 1, options["epochs"], last_checkpoint.resolve())
             if validation_loss < best_validation:
                 best_validation = validation_loss
                 torch.save(payload, best_checkpoint)
+                LOGGER.info(
+                    "Epoch %d/%d new best checkpoint saved: validation_loss=%.6f, path=%s",
+                    epoch + 1,
+                    options["epochs"],
+                    validation_loss,
+                    best_checkpoint.resolve(),
+                )
     save_json({"epochs_completed": options["epochs"], "train_records": len(train_dataset), "validation_records": len(validation_dataset), "last_checkpoint": str(last_checkpoint), "best_checkpoint": str(best_checkpoint)}, output_dir / "summary.json")
+    LOGGER.info(
+        "Training finished: epochs_completed=%d, best_validation_loss=%.6f, summary=%s",
+        options["epochs"],
+        best_validation,
+        (output_dir / "summary.json").resolve(),
+    )
     return TrainingResult(output_dir, last_checkpoint, best_checkpoint, metrics_path, options["epochs"])
 
 

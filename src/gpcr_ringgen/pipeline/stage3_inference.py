@@ -37,6 +37,7 @@ from gpcr_ringgen.pocket import (
 from gpcr_ringgen.sampling import (
     DDPMStage3Sampler,
     JointDDPMStage3Sampler,
+    load_rascore_reward_guidance,
     Stage3SamplingOutput,
     restore_global_coordinates,
 )
@@ -420,20 +421,36 @@ def run_stage3_inference(
         )
 
     schedule = DDPMNoiseSchedule(diffusion_config)
+    reward_guidance = None
+    if config.get("ra_reward") is not None:
+        if diffusion_config.mode != "joint_chemical":
+            raise ConfigurationError(
+                "ra_reward guidance requires diffusion.mode=joint_chemical"
+            )
+        reward_guidance = load_rascore_reward_guidance(
+            config,
+            device=device,
+            dtype=pipeline_config.torch_dtype,
+            atom_feature_dim=model_config.atom_feature_dim,
+            edge_feature_dim=model_config.edge_feature_dim,
+            num_atom_types=int(model_config.num_atom_types),
+            num_bond_types=int(model_config.num_bond_types),
+        )
     sampler = (
         JointDDPMStage3Sampler(schedule)
         if diffusion_config.mode == "joint_chemical"
         else DDPMStage3Sampler(schedule)
     )
-    sampling_output = sampler.sample(
-        stage3_input,
-        model,
-        seed=pipeline_config.seed,
-        pocket_field=(
+    sample_kwargs = {
+        "seed": pipeline_config.seed,
+        "pocket_field": (
             pocket_field if conditioning_config.mode == "additive" else None
         ),
-        return_trajectory=pipeline_config.return_trajectory,
-    )
+        "return_trajectory": pipeline_config.return_trajectory,
+    }
+    if diffusion_config.mode == "joint_chemical":
+        sample_kwargs["reward_guidance"] = reward_guidance
+    sampling_output = sampler.sample(stage3_input, model, **sample_kwargs)
     global_coordinates = restore_global_coordinates(
         sampling_output,
         processed_pocket.transform,

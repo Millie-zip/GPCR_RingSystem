@@ -14,3 +14,8 @@ features:
 ```
 
 当前训练阶段要求 `descriptor` 和 `pocket` 为空，`field_conditioning.mode` 必须为 `none`。如果后续确认了描述符或 pocket 特征，需要同步修改清单、记录生成器和模型配置后再训练。
+
+联合化学扩散使用 `stage3_joint_feature_manifest_v1`。该清单只允许固定拓扑
+和明确声明的固定条件进入特征；原子元素、原子序数、键类别、芳香性和共轭性
+等 clean chemical label 不得重复放入输入特征。原子类别和已有边的键类别由
+`atom_types`、`bond_types` 单独作为扩散目标传入训练器。
