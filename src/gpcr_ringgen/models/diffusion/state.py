@@ -182,38 +182,16 @@ def clean_stage3_state(
             if stage3_input.scaffold.bond_types is None
             else stage3_input.scaffold.bond_types.clone()
         ),
-    )
-    state.validate()
-    return state
-
-
-def clean_stage3_state(stage3_input: Stage3Input) -> Stage3DiffusionState:
-    """Build the clean diffusion state from persisted training coordinates.
-
-    Training must use database-derived ``x0`` coordinates.  This function is
-    intentionally separate from :func:`initialize_stage3_state`, whose
-    Gaussian coordinates are reserved for reverse-sampling initialization.
-    """
-
-    if not isinstance(stage3_input, Stage3Input):
-        raise TypeError("stage3_input must be a Stage3Input")
-    stage3_input.validate()
-    coordinates = stage3_input.scaffold.coordinates
-    if coordinates is None:
-        raise ValueError("training input must provide persisted scaffold coordinates")
-    state = Stage3DiffusionState(
-        atom_features=stage3_input.scaffold.atom_features.clone(),
-        edge_index=stage3_input.scaffold.edge_index.clone(),
-        edge_features=stage3_input.scaffold.edge_features.clone(),
-        coordinates=coordinates.clone(),
-        descriptor=stage3_input.descriptor.values.clone(),
-        timestep=torch.zeros(
-            (stage3_input.batch_size,),
-            dtype=torch.long,
-            device=coordinates.device,
+        formal_charge_types=(
+            None
+            if stage3_input.scaffold.formal_charge_types is None
+            else stage3_input.scaffold.formal_charge_types.clone()
         ),
-        mask=_clone_batch_mask(stage3_input.mask),
-        metadata=stage3_input.metadata,
+        chiralities=(
+            None
+            if stage3_input.scaffold.chiralities is None
+            else stage3_input.scaffold.chiralities.clone()
+        ),
     )
     state.validate()
     return state
@@ -224,6 +202,5 @@ __all__ = [
     "Stage3DiffusionState",
     "clean_stage3_state",
     "initialize_stage3_state",
-    "clean_stage3_state",
     "make_dummy_state",
 ]

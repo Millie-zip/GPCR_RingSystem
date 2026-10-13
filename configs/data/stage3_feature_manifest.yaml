@@ -12,6 +12,9 @@ atom_features:
   - element_Cl
   - element_Br
   - element_I
+  - element_H
+  - element_B
+  - element_Si
   - formal_charge
   - aromatic
   - degree_scaled

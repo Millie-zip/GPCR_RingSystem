@@ -1,0 +1,30 @@
+# Independent differentiable surrogate trained from cached RAscore labels.
+# Replace data.path, data.labels_path, and training.output_dir before running.
+data:
+  path: /absolute/path/to/stage3_training.jsonl
+  labels_path: /absolute/path/to/rascore_labels.db
+  max_records: null
+
+training:
+  epochs: 20
+  batch_size: 32
+  num_workers: 0
+  train_fraction: 0.9
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  output_dir: runs/ra_reward
+
+device:
+  type: auto
+  dtype: float32
+
+seed: 42
+
+ra_reward_model:
+  atom_feature_dim: 3
+  edge_feature_dim: 1
+  hidden_dim: 128
+  num_layers: 3
+  num_atom_types: 12
+  num_bond_types: 4
+  dropout: 0.1

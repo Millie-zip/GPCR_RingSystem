@@ -76,7 +76,8 @@ def materialize_training_jsonl(
         }
         sample_id_column = "m.sample_id" if "sample_id" in asset_columns else "NULL"
         query = """
-            SELECT m.source_part,m.molecule_uid,m.coordinates_json,m.atom_facts_json,m.bond_facts_json,
+            SELECT m.source_part,m.molecule_uid,m.original_smiles,m.coordinates_json,
+                   m.atom_facts_json,m.bond_facts_json,
                    m.generation_method,{sample_id_column},r.ring_system_uid,
                    r.ring_atom_mask_json,r.noise_mask_json,r.ring_bond_indices_json
             FROM molecule_3d m JOIN ring_system_3d r
@@ -92,6 +93,7 @@ def materialize_training_jsonl(
                     (
                         source_part,
                         molecule_uid,
+                        original_smiles,
                         coordinates_json,
                         atom_json,
                         bond_json,
@@ -132,12 +134,23 @@ def materialize_training_jsonl(
                         atom_types.append(ATOM_TYPE_TO_ID[element])
                         atom_features.append(manifest.atom_vector(atom, ring_atom=bool(ring_mask[index])))
                     edge_index = [[pair[0] for pair in edge_pairs], [pair[1] for pair in edge_pairs]]
+                    source_sample_id_text = (
+                        str(source_sample_id).strip()
+                        if isinstance(source_sample_id, str) and source_sample_id.strip()
+                        else f"{source_part}:{molecule_uid}"
+                    )
+                    ring_suffix = f":{ring_uid}"
+                    record_sample_id = (
+                        source_sample_id_text
+                        if source_sample_id_text.endswith(ring_suffix)
+                        else source_sample_id_text + ring_suffix
+                    )
                     record = TrainingRecord(
-                        sample_id=(
-                            str(source_sample_id)
-                            if isinstance(source_sample_id, str) and source_sample_id.strip()
-                            else f"{source_part}:{molecule_uid}:{ring_uid}"
-                        ),
+                        # Production sample_id values identify a molecule,
+                        # while one molecule can own multiple ring systems.
+                        # Make the training-record ID unique without losing
+                        # the molecule-level split group below.
+                        sample_id=record_sample_id,
                         atom_features=atom_features,
                         edge_index=edge_index,
                         edge_features=edge_features,
@@ -150,6 +163,8 @@ def materialize_training_jsonl(
                             "source_part": str(source_part),
                             "molecule_uid": str(molecule_uid),
                             "ring_system_uid": str(ring_uid),
+                            "source_sample_id": source_sample_id_text,
+                            "smiles": str(original_smiles),
                             "split_group": f"{source_part}:{molecule_uid}",
                             "generation_method": method,
                             "feature_manifest": manifest.schema_version,

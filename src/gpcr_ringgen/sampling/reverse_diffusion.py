@@ -37,6 +37,7 @@ from gpcr_ringgen.pocket import (
     QueryablePocketField,
     inverse_transform_coordinates,
 )
+from gpcr_ringgen.sampling.reward_guidance import RAScoreRewardGuidance
 from gpcr_ringgen.utils.seed import make_torch_generator
 
 
@@ -520,6 +521,7 @@ class JointDDPMStage3Sampler:
         *,
         seed: int,
         pocket_field: QueryablePocketField | None = None,
+        reward_guidance: RAScoreRewardGuidance | None = None,
         return_trajectory: bool = False,
     ) -> Stage3SamplingOutput:
         """Run fixed-topology reverse diffusion from chemical/coordinate noise."""
@@ -577,6 +579,13 @@ class JointDDPMStage3Sampler:
                     )
                     state = replace(state, timestep=timestep)
                     prediction = self._predict(denoiser, state, effective_field)
+                    if reward_guidance is not None:
+                        prediction = reward_guidance.apply(
+                            state,
+                            prediction,
+                            timestep_index=timestep_index,
+                            num_timesteps=self.schedule.num_timesteps,
+                        ).prediction
                     if state.atom_types is None or state.bond_types is None:
                         raise RuntimeError("joint state labels are unavailable")
                     previous_atom_types = categorical_reverse_step(

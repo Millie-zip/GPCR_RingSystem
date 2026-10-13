@@ -241,67 +241,157 @@ def _source_rows(source: sqlite3.Connection, config: ThreeDAssetBuilderConfig) -
     table_names = _table_names(source)
     if config.molecule_table == "selected_molecules" and "molecules" in table_names:
         molecule_columns = _table_columns(source, "molecules")
+        smiles_column = (
+            "canonical_isomeric_smiles"
+            if "canonical_isomeric_smiles" in molecule_columns
+            else "original_smiles"
+        )
+        atom_count_column = (
+            "num_atoms" if "num_atoms" in molecule_columns else "atom_count"
+        )
         required = {
             "source_part",
             "molecule_uid",
-            "canonical_isomeric_smiles",
-            "num_atoms",
+            smiles_column,
+            atom_count_column,
             "x0",
             "ring_atom_mask",
             "noise_mask",
             "atom_facts_json",
             "bond_facts_json",
-            "ring_system_uid",
-            "sample_id",
         }
         if not required.issubset(molecule_columns):
             raise ValueError(
                 "molecules is missing " + repr(sorted(required - molecule_columns))
             )
-        yield from (
-            (
-                str(source_part),
-                str(molecule_uid),
-                str(smiles),
-                atom_json,
-                bond_json,
-                str(ring_uid),
-                None if sample_id is None else str(sample_id),
-                json.dumps(
-                    [
-                        index
-                        for index, is_ring in enumerate(
-                            _decode_uint8_mask(ring_mask, int(num_atoms), "ring_atom_mask")
-                        )
-                        if is_ring
-                    ]
-                ),
-                "[]",
-                _decode_float32_coordinates(x0, int(num_atoms)),
-                _decode_uint8_mask(noise_mask, int(num_atoms), "noise_mask"),
+
+        # The production model-input DB stores ring systems in a normalized
+        # table.  Keep one output row per (molecule, ring system), while
+        # reading coordinates and chemical facts only once per molecule in
+        # the builder's cache.
+        if "ring_systems" in table_names:
+            ring_columns = _table_columns(source, "ring_systems")
+            required_ring = {
+                "source_part",
+                "molecule_uid",
+                "ring_system_uid",
+                "ring_atom_indices_json",
+            }
+            if not required_ring.issubset(ring_columns):
+                raise ValueError(
+                    "ring_systems is missing "
+                    + repr(sorted(required_ring - ring_columns))
+                )
+            ring_bonds = (
+                'r."ring_bond_indices_json"'
+                if "ring_bond_indices_json" in ring_columns
+                else "'[]'"
             )
-            for (
+            sample_order = (
+                'm."sample_index"'
+                if "sample_index" in molecule_columns
+                else 'm.rowid'
+            )
+            sample_id = 'm."sample_id"' if "sample_id" in molecule_columns else "NULL"
+            molecule = "molecules"
+            query = f"""
+                SELECT m."source_part",m."molecule_uid",m."{smiles_column}",
+                       m."{atom_count_column}",m."x0",m."ring_atom_mask",m."noise_mask",
+                       m."atom_facts_json",m."bond_facts_json",{sample_id},
+                       r."ring_system_uid",r."ring_atom_indices_json",{ring_bonds}
+                FROM "{molecule}" m
+                JOIN "ring_systems" r
+                  ON r."source_part"=m."source_part"
+                 AND r."molecule_uid"=m."molecule_uid"
+                ORDER BY {sample_order},r."system_index",r."ring_system_uid"
+            """
+            for row in source.execute(query):
+                (
+                    source_part,
+                    molecule_uid,
+                    smiles,
+                    atom_count,
+                    x0,
+                    ring_mask,
+                    noise_mask,
+                    atom_json,
+                    bond_json,
+                    sample_id_value,
+                    ring_uid,
+                    ring_atoms_json,
+                    ring_bonds_json,
+                ) = row
+                atom_count = int(atom_count)
+                _decode_uint8_mask(ring_mask, atom_count, "ring_atom_mask")
+                _decode_uint8_mask(noise_mask, atom_count, "noise_mask")
+                _ring_indices(ring_atoms_json, atom_count)
+                yield (
+                    str(source_part),
+                    str(molecule_uid),
+                    str(smiles),
+                    atom_json,
+                    bond_json,
+                    str(ring_uid),
+                    None if sample_id_value is None else str(sample_id_value),
+                    ring_atoms_json,
+                    ring_bonds_json,
+                    _decode_float32_coordinates(x0, atom_count),
+                    _decode_uint8_mask(noise_mask, atom_count, "noise_mask"),
+                )
+            return
+
+        # Backward-compatible adapter for the compact one-table fixture used
+        # by the original Stage 3 interface tests.
+        required.update({"ring_system_uid", "sample_id"})
+        if not required.issubset(molecule_columns):
+            raise ValueError(
+                "molecules is missing " + repr(sorted(required - molecule_columns))
+            )
+        sample_order = (
+            '"test_id"' if "test_id" in molecule_columns else '"sample_id"'
+        )
+        query = f"""
+            SELECT "source_part","molecule_uid","{smiles_column}",
+                   "{atom_count_column}","x0","ring_atom_mask","noise_mask",
+                   "atom_facts_json","bond_facts_json","ring_system_uid","sample_id"
+            FROM "molecules"
+            ORDER BY {sample_order}
+        """
+        for row in source.execute(query):
+            (
                 source_part,
                 molecule_uid,
                 smiles,
-                num_atoms,
+                atom_count,
                 x0,
                 ring_mask,
                 noise_mask,
                 atom_json,
                 bond_json,
                 ring_uid,
-                sample_id,
-            ) in source.execute(
-                """
-                SELECT source_part,molecule_uid,canonical_isomeric_smiles,
-                       num_atoms,x0,ring_atom_mask,noise_mask,
-                       atom_facts_json,bond_facts_json,ring_system_uid,sample_id
-                FROM molecules
-                ORDER BY test_id
-                """
+                sample_id_value,
+            ) = row
+            atom_count = int(atom_count)
+            indices = [
+                index
+                for index, is_ring in enumerate(
+                    _decode_uint8_mask(ring_mask, atom_count, "ring_atom_mask")
+                )
+                if is_ring
+            ]
+            yield (
+                str(source_part),
+                str(molecule_uid),
+                str(smiles),
+                atom_json,
+                bond_json,
+                str(ring_uid),
+                None if sample_id_value is None else str(sample_id_value),
+                json.dumps(indices),
+                "[]",
+                _decode_float32_coordinates(x0, atom_count),
+                _decode_uint8_mask(noise_mask, atom_count, "noise_mask"),
             )
-        )
         return
 
     molecule_columns = _table_columns(source, config.molecule_table)

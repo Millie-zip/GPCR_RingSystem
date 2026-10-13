@@ -10,6 +10,12 @@ from gpcr_ringgen.sampling.reverse_diffusion import (
     restore_global_coordinates,
     materialized_bond_mask,
 )
+from gpcr_ringgen.sampling.reward_guidance import (
+    RAScoreRewardGuidance,
+    RAScoreRewardGuidanceConfig,
+    RewardGuidanceResult,
+    load_rascore_reward_guidance,
+)
 from gpcr_ringgen.sampling.sampler import DummySampler
 
 __all__ = [
@@ -22,4 +28,8 @@ __all__ = [
     "ddpm_reverse_step",
     "restore_global_coordinates",
     "materialized_bond_mask",
+    "RAScoreRewardGuidance",
+    "RAScoreRewardGuidanceConfig",
+    "RewardGuidanceResult",
+    "load_rascore_reward_guidance",
 ]
