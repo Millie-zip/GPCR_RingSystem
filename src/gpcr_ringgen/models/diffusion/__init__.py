@@ -22,6 +22,7 @@ from gpcr_ringgen.models.diffusion.state import (
 )
 from gpcr_ringgen.models.diffusion.transitions import (
     ForwardDiffusionOutput,
+    prepare_diffusion_values,
     project_zero_center_of_mass,
     q_sample,
     sample_coordinate_noise,
@@ -70,6 +71,7 @@ __all__ = [
     "initialize_ring_sidechain_state",
     "load_ddpm_config",
     "load_chemical_vocabulary",
+    "prepare_diffusion_values",
     "project_zero_center_of_mass",
     "q_sample",
     "q_sample_categorical",

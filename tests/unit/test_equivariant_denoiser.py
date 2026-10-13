@@ -99,7 +99,17 @@ def _make_state(
     )
     state = Stage3DiffusionState(
         atom_features=atom_features,
+        atom_types=torch.tensor(
+            [[0, 1, 2, 3], [0, 1, 0, 0]][:batch_size],
+            dtype=torch.long,
+            device=device,
+        ),
         edge_index=edge_index,
+        bond_types=torch.tensor(
+            [[0, 1, 2, 3], [0, 0, 0, 0]][:batch_size],
+            dtype=torch.long,
+            device=device,
+        ),
         edge_features=edge_features,
         coordinates=coordinates,
         descriptor=descriptor,
@@ -107,6 +117,7 @@ def _make_state(
         mask=BatchMask(
             atom_mask=atom_mask,
             edge_mask=edge_mask,
+            diffusion_mask=atom_mask.clone(),
             descriptor_mask=descriptor_mask,
         ),
         metadata=BatchMetadata(
@@ -195,6 +206,28 @@ def test_backward_reaches_coordinates_and_parameters() -> None:
 
     assert state.coordinates.grad is not None
     assert any(parameter.grad is not None for parameter in model.parameters())
+    assert model.atom_type_embedding.weight.grad is not None
+    assert model.bond_type_embedding.weight.grad is not None
+
+
+def test_categorical_types_condition_the_prediction() -> None:
+    state = _make_state(batch_size=1)
+    model = _make_model().eval()
+    changed_atom_types = state.atom_types.clone()
+    changed_atom_types[0, 0] = 8
+    changed_bond_types = state.bond_types.clone()
+    changed_bond_types[0, 0] = 3
+
+    baseline = model(state).coordinate_noise
+    atom_changed = model(
+        replace(state, atom_types=changed_atom_types)
+    ).coordinate_noise
+    bond_changed = model(
+        replace(state, bond_types=changed_bond_types)
+    ).coordinate_noise
+
+    assert not torch.allclose(baseline, atom_changed)
+    assert not torch.allclose(baseline, bond_changed)
 
 
 def test_all_computed_gradients_are_finite() -> None:
@@ -281,3 +314,28 @@ def test_repository_denoiser_config_loads() -> None:
     assert config.descriptor_dim is None
     assert config.num_atom_types == 9
     assert config.num_bond_types == 4
+    assert config.atom_type_vocab_size == 9
+    assert config.bond_type_vocab_size == 4
+
+
+def test_coordinate_denoiser_preserves_fixed_anchor_noise_mask() -> None:
+    state = _make_state()
+    state.mask.diffusion_mask[:, 0] = False
+    model = _make_model().eval()
+
+    output = model(state)
+
+    assert torch.count_nonzero(output.coordinate_noise[:, 0]) == 0
+    assert torch.count_nonzero(
+        output.coordinate_noise.masked_select(~state.mask.atom_mask.unsqueeze(-1))
+    ) == 0
+    assert torch.isfinite(output.coordinate_noise).all()
+
+
+def test_coordinate_baseline_accepts_legacy_unlabeled_graph() -> None:
+    state = replace(_make_state(), atom_types=None, bond_types=None)
+    output = _make_model().eval()(state)
+
+    assert output.coordinate_noise.shape == state.coordinates.shape
+    assert output.atom_type_logits is None
+    assert output.bond_type_logits is None

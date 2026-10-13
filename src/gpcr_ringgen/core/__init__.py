@@ -27,8 +27,22 @@ from gpcr_ringgen.core.types import (
     Stage3DiffusionState,
     Stage3Input,
 )
+from gpcr_ringgen.core.vocab import (
+    ATOM_ID_TO_TYPE,
+    ATOM_TYPE_COUNT,
+    ATOM_TYPE_TO_ID,
+    BOND_ID_TO_TYPE,
+    BOND_TYPE_COUNT,
+    BOND_TYPE_TO_ID,
+)
 
 __all__ = [
+    "ATOM_ID_TO_TYPE",
+    "ATOM_TYPE_COUNT",
+    "ATOM_TYPE_TO_ID",
+    "BOND_ID_TO_TYPE",
+    "BOND_TYPE_COUNT",
+    "BOND_TYPE_TO_ID",
     "BatchMask",
     "BatchMetadata",
     "Constraint",

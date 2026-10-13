@@ -51,11 +51,19 @@ def _make_state(*, dtype: torch.dtype = torch.float32) -> Stage3DiffusionState:
             ],
             dtype=dtype,
         ),
+        atom_types=torch.tensor(
+            [[0, 1, 2, 3], [0, 1, 0, 0]],
+            dtype=torch.long,
+        ),
         edge_index=torch.tensor(
             [
                 [[0, 1, 2, 3], [1, 2, 3, 0]],
                 [[0, -1, -1, -1], [1, -1, -1, -1]],
             ],
+            dtype=torch.long,
+        ),
+        bond_types=torch.tensor(
+            [[0, 1, 2, 3], [0, 0, 0, 0]],
             dtype=torch.long,
         ),
         edge_features=torch.tensor(
@@ -89,6 +97,9 @@ def _make_state(*, dtype: torch.dtype = torch.float32) -> Stage3DiffusionState:
         timestep=torch.tensor([2, 7], dtype=torch.long),
         mask=BatchMask(
             atom_mask=torch.tensor(
+                [[True, True, True, True], [True, True, False, False]]
+            ),
+            diffusion_mask=torch.tensor(
                 [[True, True, True, True], [True, True, False, False]]
             ),
             edge_mask=torch.tensor(

@@ -45,12 +45,19 @@ def _coerce_stage2_output(
     else:
         atom_mask = output.get("atom_mask")
         edge_mask = output.get("edge_mask")
+        diffusion_mask = output.get("diffusion_mask")
         if not isinstance(atom_mask, Tensor) or not isinstance(edge_mask, Tensor):
             raise TypeError(
                 "Stage 2 mock output must provide BatchMask or tensor "
                 "atom_mask and edge_mask values."
             )
-        mask = BatchMask(atom_mask=atom_mask, edge_mask=edge_mask)
+        if diffusion_mask is not None and not isinstance(diffusion_mask, Tensor):
+            raise TypeError("Stage 2 mock diffusion_mask must be a tensor.")
+        mask = BatchMask(
+            atom_mask=atom_mask,
+            edge_mask=edge_mask,
+            diffusion_mask=diffusion_mask,
+        )
 
     metadata_value = output.get("metadata")
     if isinstance(metadata_value, BatchMetadata):
@@ -113,6 +120,7 @@ def stage2_output_to_stage3_input(
     combined_mask = BatchMask(
         atom_mask=stage2.mask.atom_mask,
         edge_mask=stage2.mask.edge_mask,
+        diffusion_mask=stage2.mask.diffusion_mask,
         descriptor_mask=descriptor_mask,
         pocket_mask=pocket_mask,
         ring_atom_mask=stage2.mask.ring_atom_mask,
@@ -175,6 +183,7 @@ def add_ring_core_masks(
             ring_atom_mask=ring_atom_mask,
             ring_pair_mask=ring_pair_mask,
             ring_edge_mask=ring_pair_mask.clone(),
+            diffusion_mask=stage2_output.mask.diffusion_mask,
         ),
         metadata=stage2_output.metadata,
     )

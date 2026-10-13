@@ -49,11 +49,23 @@ def _make_stage3_input(batch_size: int = 2) -> Stage3Input:
     stage2 = Stage2Output(
         scaffold=MolecularGraph(
             atom_features=atom_features,
+            atom_types=torch.tensor(
+                [[0, 1, 2, 3]] * batch_size,
+                dtype=torch.long,
+            ).masked_fill(~atom_mask, 0),
             edge_index=edge_index,
+            bond_types=torch.tensor(
+                [[0, 1, 2]] * batch_size,
+                dtype=torch.long,
+            ).masked_fill(~edge_mask, 0),
             edge_features=edge_features,
             coordinates=source_coordinates,
         ),
-        mask=BatchMask(atom_mask=atom_mask, edge_mask=edge_mask),
+        mask=BatchMask(
+            atom_mask=atom_mask,
+            edge_mask=edge_mask,
+            diffusion_mask=atom_mask.clone(),
+        ),
         metadata=metadata,
     )
     descriptor = DescriptorBatch(
@@ -148,18 +160,24 @@ def test_variable_size_batch_mask_and_padding_are_preserved() -> None:
 def test_initialization_does_not_modify_graph_topology_or_features() -> None:
     stage3_input = _make_stage3_input()
     original_atom_features = stage3_input.scaffold.atom_features.clone()
+    original_atom_types = stage3_input.scaffold.atom_types.clone()
     original_edge_index = stage3_input.scaffold.edge_index.clone()
+    original_bond_types = stage3_input.scaffold.bond_types.clone()
     original_edge_features = stage3_input.scaffold.edge_features.clone()
     original_coordinates = stage3_input.scaffold.coordinates.clone()
 
     state = initialize_stage3_state(stage3_input, seed=31)
 
     assert torch.equal(stage3_input.scaffold.atom_features, original_atom_features)
+    assert torch.equal(stage3_input.scaffold.atom_types, original_atom_types)
     assert torch.equal(stage3_input.scaffold.edge_index, original_edge_index)
+    assert torch.equal(stage3_input.scaffold.bond_types, original_bond_types)
     assert torch.equal(stage3_input.scaffold.edge_features, original_edge_features)
     assert torch.equal(stage3_input.scaffold.coordinates, original_coordinates)
     assert torch.equal(state.atom_features, original_atom_features)
+    assert torch.equal(state.atom_types, original_atom_types)
     assert torch.equal(state.edge_index, original_edge_index)
+    assert torch.equal(state.bond_types, original_bond_types)
     assert torch.equal(state.edge_features, original_edge_features)
     assert not torch.equal(state.coordinates, original_coordinates)
 
@@ -174,10 +192,26 @@ def test_descriptor_and_sample_order_are_preserved() -> None:
     assert state.metadata.records == stage3_input.metadata.records
 
 
+def test_initialization_copies_fixed_ring_coordinates_exactly() -> None:
+    stage3_input = _make_stage3_input(batch_size=1)
+    stage3_input.mask.diffusion_mask[0] = torch.tensor(
+        [False, False, True, True]
+    )
+
+    state = initialize_stage3_state(stage3_input, seed=17)
+
+    fixed_ring = ~stage3_input.mask.diffusion_mask & stage3_input.mask.atom_mask
+    assert torch.equal(
+        state.coordinates[fixed_ring],
+        stage3_input.scaffold.coordinates[fixed_ring],
+    )
+
+
 def test_empty_ligand_sample_and_invalid_arguments_have_clear_errors() -> None:
     stage3_input = _make_stage3_input()
     stage3_input.mask.atom_mask[1] = False
     stage3_input.mask.edge_mask[1] = False
+    stage3_input.mask.diffusion_mask[1] = False
 
     with pytest.raises(ValueError, match="at least one valid ligand atom"):
         initialize_stage3_state(stage3_input, seed=1)

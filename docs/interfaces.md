@@ -8,9 +8,11 @@
 - `PocketRepresentation`: a pocket identifier plus undecided feature and metadata mappings.
 - `GeneratedMolecule`: an inspectable generated record; Dummy outputs are explicitly non-scientific.
 
-Atom/bond vocabularies, feature meanings, pocket resolution, and scientific
-representations remain intentionally undecided. Stage 3 fixes only the padded
-batch transport shapes below.
+Continuous feature meanings, pocket resolution, and other scientific
+representations remain intentionally undecided. Atom and bond categorical
+vocabularies belong to each configured diffusion mode, alongside the shared
+padded Stage 3 transport shapes. The persisted coordinate-only schema uses the
+frozen IDs listed below.
 
 ## Stage 3 data contract
 
@@ -44,6 +46,11 @@ is generated. `formal_charge_types [B,N]` and `chiralities [B,N]` are generated
 only outside the core and copied unchanged inside it. Atom type and coordinates
 are generated for all real atoms.
 
+The persisted coordinate-only training schema uses frozen categorical IDs: `C=0`, `N=1`, `O=2`, `S=3`, `P=4`, `F=5`,
+`Cl=6`, `Br=7`, `I=8` for atoms and `SINGLE=0`, `DOUBLE=1`, `TRIPLE=2`,
+`AROMATIC=3` for bonds. Padding uses ID 0 and is excluded by masks. There is
+no unknown category in that persisted schema: its adapters must reject unsupported chemistry. Joint and Route-A label bounds follow their configured vocabularies. `diffusion_mask` defaults to `atom_mask`; an explicit mask can preserve fixed coordinate anchors in coordinate-only sampling.
+
 `Stage2Output` and plain mapping mocks can be adapted with
 `stage2_output_to_stage3_input`. The adapter validates data only; it does not run
 Stage 2, calculate descriptors, preprocess pockets, construct fields, diffuse,
@@ -53,18 +60,17 @@ or sample.
 
 `initialize_stage3_state(stage3_input, seed, timestep=0)` converts the existing
 padded Stage 3 boundary object into `Stage3DiffusionState`; no alternate graph
-or descriptor structure is introduced. With atom mask `m` and independent
-Gaussian samples `Z`:
+or descriptor structure is introduced. Let `d` be `diffusion_mask`, where ring
+atoms and padding are false, and let `X_ring` be the pocket-local input:
 
     Z[b, n, :] ~ N(0, I_3)
-    center[b, :] = sum_n m[b, n] * Z[b, n, :] / sum_n m[b, n]
-    X_init[b, n, :] = m[b, n] * (Z[b, n, :] - center[b, :])
+    center[b, :] = sum_n d[b, n] * Z[b, n, :] / sum_n d[b, n]
+    X_init = where(d, Z - center, X_ring)
 
 The resulting coordinates have shape `[B, N, 3]`, the same floating dtype and
-device as scaffold atom features. `atom_mask=True` rows are valid ligand atoms;
-padding rows are exactly zero. Every sample must contain at least one valid
-atom. Graph features, edge topology, descriptors, masks, sample IDs, and batch
-ordering are copied without changing their values.
+device as scaffold atom features. Fixed ring rows are copied exactly, padding
+rows are zero, and every sample must contain at least one atom to diffuse.
+Graph features, topology, descriptors, masks, IDs, and ordering are preserved.
 
 The required `seed` initializes a local device-specific `torch.Generator`, so
 identical input and seed produce identical coordinates without mutating global
@@ -89,7 +95,7 @@ non-negative integer shared by the batch, a tensor `[B]`, or omitted to use
 | edge index/features | `[B, 2, E]`, `[B, E, F_edge]` | `long`, floating | only `edge_mask=True` bonds participate |
 | noisy coordinates | `[B, N, 3]` | floating; model device | vector input, padding ignored |
 | timestep | `[B]` | scalar numeric; model device | one invariant condition per sample |
-| coordinate noise | `[B, N, 3]` | matches coordinates | zero on padding and centered over valid atoms |
+| coordinate noise | `[B, N, 3]` | matches coordinates | nonzero only where `diffusion_mask=True`; fixed ring/padding are zero |
 
 The base architecture is EGNN-style. For valid atoms `i, j`, scalar messages
 depend only on scalar node/bond features and squared distance:
@@ -100,14 +106,15 @@ depend only on scalar node/bond features and squared distance:
 Both distance and learned coefficients are rotation/translation invariant;
 only the relative direction carries a vector representation. Therefore
 rotating coordinates rotates the predicted coordinate noise, while translating
-all coordinates leaves the prediction unchanged. A final valid-atom
-center-of-mass removal eliminates net translational drift.
+all coordinates leaves the prediction unchanged. Coordinate updates and the
+final centering are restricted to `diffusion_mask=True`, so the ring is fixed.
 
 Atom and edge features must be invariant scalars; vector-valued input feature
-irreps are not supported in this base implementation. Sinusoidal timestep
-embedding is also scalar. Descriptor conditioning is an optional masked linear
-projection selected by `descriptor_dim`; it is disabled by default. No pocket
-or Field data is read by this backbone.
+irreps are not supported in this base implementation. Atom and bond type IDs
+are embedded separately instead of being mixed into continuous features.
+Sinusoidal timestep embedding is also scalar. Descriptor conditioning is an
+optional masked linear projection selected by `descriptor_dim`; it is disabled
+by default. No pocket or Field data is read by this backbone.
 
 Model dimensions and numerical constants are configured in
 `configs/model/equivariant_denoiser.yaml`. Diffusion scheduling, forward

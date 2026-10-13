@@ -1,0 +1,20 @@
+RAscore pilot sampling summary
+============================================================
+seed: 20260831
+target: 10000
+rows_written: 10000
+unique_molecules: 10000
+unique_topologies: 3068
+unique_chemical_scaffolds: 10000
+duplicate_molecule_uid: 0
+missing_isomeric_smiles: 0
+
+Molecules by stratum:
+  chem_1: 900
+  chem_101_500: 2000
+  chem_11_50: 1951
+  chem_2_5: 1720
+  chem_501plus: 680
+  chem_51_100: 1400
+  chem_6_10: 1171
+  fill_high_diversity: 178

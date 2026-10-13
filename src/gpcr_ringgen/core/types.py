@@ -139,6 +139,8 @@ class MolecularGraph:
     bond_types: Tensor | None = None
     formal_charge_types: Tensor | None = None
     chiralities: Tensor | None = None
+    atom_type_vocab_size: int | None = None
+    bond_type_vocab_size: int | None = None
 
     @property
     def batch_size(self) -> int:
@@ -195,6 +197,15 @@ class MolecularGraph:
                 raise ValueError("atom_types values must be non-negative.")
             if bool((self.bond_types < 0).any()):
                 raise ValueError("bond_types values must be non-negative.")
+            for name, values, size in (
+                ("atom_types", self.atom_types, self.atom_type_vocab_size),
+                ("bond_types", self.bond_types, self.bond_type_vocab_size),
+            ):
+                if size is not None:
+                    if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+                        raise ValueError(f"{name} vocabulary size must be a positive integer.")
+                    if bool((values >= size).any()):
+                        raise ValueError(f"{name} contains an unsupported category ID.")
             tensors["atom_types"] = self.atom_types
             tensors["bond_types"] = self.bond_types
         for name, values in (
@@ -315,6 +326,13 @@ class BatchMask:
     ring_atom_mask: Tensor | None = None
     ring_pair_mask: Tensor | None = None
     ring_edge_mask: Tensor | None = None
+    diffusion_mask: Tensor | None = None
+
+    def __post_init__(self) -> None:
+        # Legacy joint/Route-A batches diffuse all valid coordinates. Explicit
+        # train masks retain fixed ring anchors and override this default.
+        if self.diffusion_mask is None:
+            self.diffusion_mask = self.atom_mask.clone()
 
     @property
     def batch_size(self) -> int:
@@ -328,6 +346,7 @@ class BatchMask:
         masks = {
             "atom_mask": self.atom_mask,
             "edge_mask": self.edge_mask,
+            "diffusion_mask": self.diffusion_mask,
             "descriptor_mask": self.descriptor_mask,
             "pocket_mask": self.pocket_mask,
             "ring_atom_mask": self.ring_atom_mask,
@@ -345,6 +364,10 @@ class BatchMask:
                 raise ValueError(f"{name} must be on the atom_mask device.")
         if self.atom_mask.shape[0] < 1:
             raise ValueError("Mask batch size must be positive.")
+        if self.diffusion_mask is None or self.diffusion_mask.shape != self.atom_mask.shape:
+            raise ValueError("diffusion_mask shape must match atom_mask.")
+        if bool((self.diffusion_mask & ~self.atom_mask).any()):
+            raise ValueError("diffusion_mask must be a subset of atom_mask.")
         ring_masks = (self.ring_atom_mask, self.ring_pair_mask, self.ring_edge_mask)
         if any(mask is not None for mask in ring_masks) and not all(
             mask is not None for mask in ring_masks
@@ -483,6 +506,13 @@ class Stage3Input:
         descriptor_dim = self.descriptor.values.shape[1]
         num_pocket_points = self.pocket.coordinates.shape[1]
 
+        if bool((self.mask.atom_mask.sum(dim=1) == 0).any()):
+            raise ValueError("Every sample must contain at least one valid ligand atom.")
+        if bool((self.mask.diffusion_mask.sum(dim=1) == 0).any()):
+            raise ValueError("Every Stage 3 sample must contain an atom to diffuse.")
+        fixed_mask = self.mask.atom_mask & ~self.mask.diffusion_mask
+        if bool(fixed_mask.any()) and self.scaffold.coordinates is None:
+            raise ValueError("scaffold coordinates are required for fixed ring atoms")
         if self.descriptor.batch_size != batch_size or self.pocket.batch_size != batch_size:
             raise ValueError("Scaffold, descriptor, and pocket batch sizes must match.")
         expected_shapes = {
@@ -616,6 +646,8 @@ class Stage3DiffusionState:
             raise ValueError("descriptor must be on the graph device.")
         if tuple(self.mask.atom_mask.shape) != tuple(self.atom_features.shape[:2]):
             raise ValueError("atom_mask shape must match atom_features [B, N].")
+        if bool((self.mask.diffusion_mask.sum(dim=1) == 0).any()):
+            raise ValueError("Every diffusion state must contain an atom to diffuse.")
         if tuple(self.mask.edge_mask.shape) != (
             self.batch_size,
             self.edge_features.shape[1],

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pickle
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +108,7 @@ class Stage3InferencePipelineConfig:
     def from_mapping(
         cls,
         config: Mapping[str, Any],
-    ) -> "Stage3InferencePipelineConfig":
+    ) -> Stage3InferencePipelineConfig:
         """Parse paths, runtime, seed, and sampling controls."""
 
         pipeline = _config_mapping(config, "pipeline")
@@ -236,6 +236,10 @@ def _serialize_output(
             .cpu()
             .tolist(),
             "atom_mask": state.mask.atom_mask[batch_index].detach().cpu().tolist(),
+            "diffusion_mask": state.mask.diffusion_mask[batch_index]
+            .detach()
+            .cpu()
+            .tolist(),
             "descriptor": state.descriptor[batch_index].detach().cpu().tolist(),
             "descriptor_mask": state.mask.descriptor_mask[batch_index]
             .detach()
@@ -246,7 +250,15 @@ def _serialize_output(
                 .detach()
                 .cpu()
                 .tolist(),
+                "atom_types": state.atom_types[batch_index]
+                .detach()
+                .cpu()
+                .tolist(),
                 "edge_index": state.edge_index[batch_index]
+                .detach()
+                .cpu()
+                .tolist(),
+                "bond_types": state.bond_types[batch_index]
                 .detach()
                 .cpu()
                 .tolist(),
@@ -366,11 +378,24 @@ def run_stage3_inference(
         atom_metadata=request.pocket_atom_metadata,
         metadata=request.stage2_output.metadata,
     )
+    scaffold_coordinates = request.stage2_output.scaffold.coordinates
+    if scaffold_coordinates is None:
+        raise ConfigurationError("scaffold coordinates are required")
+    local_scaffold = replace(
+        request.stage2_output.scaffold,
+        coordinates=(
+            scaffold_coordinates - processed_pocket.transform.center.unsqueeze(1)
+        ),
+    )
+    local_stage2_output = replace(
+        request.stage2_output,
+        scaffold=local_scaffold,
+    )
     field_config = GeometryFieldConfig.from_mapping(config)
     pocket_field = build_geometry_field(processed_pocket, field_config)
     conditioning_config = FieldConditioningConfig.from_mapping(config)
     stage3_input = stage2_output_to_stage3_input(
-        request.stage2_output,
+        local_stage2_output,
         descriptor=request.descriptor,
         pocket=processed_pocket.pocket,
         descriptor_mask=request.descriptor_mask,

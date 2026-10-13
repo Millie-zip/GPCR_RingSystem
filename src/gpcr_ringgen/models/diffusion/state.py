@@ -28,6 +28,9 @@ def _clone_batch_mask(mask: BatchMask) -> BatchMask:
     return BatchMask(
         atom_mask=mask.atom_mask.clone(),
         edge_mask=mask.edge_mask.clone(),
+        diffusion_mask=(
+            None if mask.diffusion_mask is None else mask.diffusion_mask.clone()
+        ),
         descriptor_mask=(
             None if mask.descriptor_mask is None else mask.descriptor_mask.clone()
         ),
@@ -50,11 +53,11 @@ def initialize_stage3_state(
     seed: int,
     timestep: int = 0,
 ) -> Stage3DiffusionState:
-    """Create a centered isotropic-Gaussian 3D state from Stage 3 input.
+    """Create a state with fixed ring coordinates and noisy non-ring atoms.
 
-    Valid ligand atom coordinates are first sampled independently from
-    ``N(0, I_3)`` and then centered per sample using only positions where
-    ``atom_mask=True``. Padding coordinates are set to zero.
+    ``diffusion_mask=True`` atoms are initialized from ``N(0, I_3)``.
+    Fixed atoms copy the pocket-local scaffold coordinates exactly. Padding is
+    zero. Thus ring coordinates never enter the random initialization.
 
     Args:
         stage3_input: Validated padded Stage 3 input. Graph topology/features,
@@ -85,17 +88,37 @@ def initialize_stage3_state(
         raise ValueError("Every sample must contain at least one valid ligand atom")
 
     atom_features = stage3_input.scaffold.atom_features
+    scaffold_coordinates = stage3_input.scaffold.coordinates
+    if scaffold_coordinates is None:
+        if bool((atom_mask & ~stage3_input.mask.diffusion_mask).any()):
+            raise ValueError("scaffold coordinates are required for fixed ring atoms")
+        scaffold_coordinates = torch.zeros((*atom_features.shape[:2], 3), dtype=atom_features.dtype, device=atom_features.device)
+    diffusion_mask = stage3_input.mask.diffusion_mask
+    if diffusion_mask is None:
+        raise ValueError("diffusion_mask is required for Stage 3 initialization")
     generator = make_torch_generator(seed, device=atom_features.device)
-    coordinates = torch.randn(
+    random_coordinates = torch.randn(
         (*atom_features.shape[:2], 3),
         dtype=atom_features.dtype,
         device=atom_features.device,
         generator=generator,
     )
-    coordinate_mask = atom_mask.unsqueeze(-1).to(dtype=coordinates.dtype)
-    valid_counts = coordinate_mask.sum(dim=1, keepdim=True)
-    center = (coordinates * coordinate_mask).sum(dim=1, keepdim=True) / valid_counts
-    coordinates = (coordinates - center) * coordinate_mask
+    noise_mask = diffusion_mask.unsqueeze(-1).to(dtype=random_coordinates.dtype)
+    noise_counts = noise_mask.sum(dim=1, keepdim=True)
+    center = (random_coordinates * noise_mask).sum(dim=1, keepdim=True) / noise_counts
+    centered_random = (random_coordinates - center) * noise_mask
+    fixed_mask = (atom_mask & ~diffusion_mask).unsqueeze(-1)
+    random_coordinates = torch.where(
+        fixed_mask.any(dim=1, keepdim=True),
+        random_coordinates * noise_mask,
+        centered_random,
+    )
+    coordinates = torch.where(
+        fixed_mask,
+        scaffold_coordinates,
+        random_coordinates,
+    )
+    coordinates = coordinates * atom_mask.unsqueeze(-1).to(coordinates.dtype)
 
     state = Stage3DiffusionState(
         atom_features=atom_features.clone(),

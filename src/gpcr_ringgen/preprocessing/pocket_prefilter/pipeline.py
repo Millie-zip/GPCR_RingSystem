@@ -309,7 +309,14 @@ def evaluate_pose(scaffold_coords, scaffold_radii, receptor_coords, receptor_rad
         "span_fit": span_fit,
     }
 
-def _embed_multiple(mol3d, mode, seed):
+def _embed_multiple(
+    mol3d,
+    mode,
+    seed,
+    *,
+    max_conformers=MAX_CONFORMERS,
+    max_iterations=2000,
+):
     if mode == 1:
         params = rdDistGeom.ETKDGv3(); params.useRandomCoords=False; params.pruneRmsThresh=0.50
     elif mode == 2:
@@ -318,10 +325,22 @@ def _embed_multiple(mol3d, mode, seed):
         params = rdDistGeom.ETKDGv2(); params.useRandomCoords=True; params.pruneRmsThresh=0.10; params.enforceChirality=True
     params.randomSeed = int(seed)
     params.numThreads = 1
-    params.maxIterations = 2000
-    return list(rdDistGeom.EmbedMultipleConfs(mol3d, numConfs=MAX_CONFORMERS, params=params))
+    params.maxIterations = int(max_iterations)
+    return list(
+        rdDistGeom.EmbedMultipleConfs(
+            mol3d,
+            numConfs=int(max_conformers),
+            params=params,
+        )
+    )
 
-def generate_conformers(smiles):
+def generate_conformers(
+    smiles,
+    *,
+    max_conformers=MAX_CONFORMERS,
+    embed_max_iterations=2000,
+    uff_max_iters=UFF_MAX_ITERS,
+):
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         raise ValueError("RDKit MolFromSmiles failed")
@@ -332,7 +351,13 @@ def generate_conformers(smiles):
     mol3d = Chem.AddHs(mol)
     conf_ids = []; embed_mode = None
     for mode in (1,2,3):
-        conf_ids = _embed_multiple(mol3d, mode, ETKDG_RANDOM_SEED + mode)
+        conf_ids = _embed_multiple(
+            mol3d,
+            mode,
+            ETKDG_RANDOM_SEED + mode,
+            max_conformers=max_conformers,
+            max_iterations=embed_max_iterations,
+        )
         if conf_ids:
             embed_mode = mode
             break
@@ -341,7 +366,11 @@ def generate_conformers(smiles):
     uff_status = "NOT_RUN"
     try:
         if AllChem.UFFHasAllMoleculeParams(mol3d):
-            AllChem.UFFOptimizeMoleculeConfs(mol3d, numThreads=1, maxIters=UFF_MAX_ITERS)
+            AllChem.UFFOptimizeMoleculeConfs(
+                mol3d,
+                numThreads=1,
+                maxIters=int(uff_max_iters),
+            )
             uff_status = "OK"
         else:
             uff_status = "MISSING_UFF_PARAMETERS"

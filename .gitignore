@@ -1,10 +1,12 @@
 .venv/
+.venv-test/
 .idea/
 
 __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
+pytest-of-*/
 .mypy_cache/
 .ruff_cache/
 

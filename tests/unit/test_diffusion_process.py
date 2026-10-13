@@ -78,11 +78,19 @@ def _make_state(
             ],
             dtype=dtype,
         ),
+        atom_types=torch.tensor(
+            [[0, 1, 2, 3], [0, 1, 0, 0]],
+            dtype=torch.long,
+        ),
         edge_index=torch.tensor(
             [
                 [[0, 1, 2, 3], [1, 2, 3, 0]],
                 [[0, -1, -1, -1], [1, -1, -1, -1]],
             ],
+            dtype=torch.long,
+        ),
+        bond_types=torch.tensor(
+            [[0, 1, 2, 3], [0, 0, 0, 0]],
             dtype=torch.long,
         ),
         edge_features=torch.tensor(
@@ -100,6 +108,9 @@ def _make_state(
         timestep=torch.zeros(2, dtype=torch.long),
         mask=BatchMask(
             atom_mask=torch.tensor(
+                [[True, True, True, True], [True, True, False, False]]
+            ),
+            diffusion_mask=torch.tensor(
                 [[True, True, True, True], [True, True, False, False]]
             ),
             edge_mask=torch.tensor(
@@ -132,6 +143,32 @@ def _make_denoiser(dtype: torch.dtype) -> EquivariantDenoiserBackbone:
         descriptor_dim=3,
     )
     return EquivariantDenoiserBackbone(model_config).to(dtype=dtype)
+
+
+def test_forward_diffusion_leaves_ring_coordinates_unchanged() -> None:
+    state = _make_state(dtype=torch.float64)
+    state.mask.diffusion_mask = torch.tensor(
+        [[False, False, True, True], [False, True, False, False]]
+    )
+    timestep = torch.tensor([5, 8], dtype=torch.long)
+    explicit_noise = torch.randn_like(state.coordinates)
+
+    output = q_sample(
+        state,
+        timestep,
+        DDPMNoiseSchedule(_make_config()),
+        noise=explicit_noise,
+    )
+
+    fixed_ring = state.mask.atom_mask & ~state.mask.diffusion_mask
+    assert torch.equal(
+        output.noisy_state.coordinates[fixed_ring],
+        state.coordinates[fixed_ring],
+    )
+    assert torch.equal(
+        output.noise[fixed_ring],
+        torch.zeros_like(output.noise[fixed_ring]),
+    )
 
 
 def _valid_centers(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:

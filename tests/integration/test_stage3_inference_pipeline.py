@@ -20,7 +20,6 @@ from gpcr_ringgen.pocket import QueryablePocketField
 from gpcr_ringgen.sampling import JointDDPMStage3Sampler
 from gpcr_ringgen.utils.io import load_yaml_config
 
-
 REPOSITORY_ROOT = Path(__file__).parents[2]
 SMOKE_CONFIG = REPOSITORY_ROOT / "configs" / "pipeline" / "stage3_smoke.yaml"
 SMOKE_INPUT = REPOSITORY_ROOT / "examples" / "inputs" / "stage3_smoke.json"
@@ -82,6 +81,11 @@ def test_minimal_pocket_scaffold_pipeline_builds_field_and_calls_sampler(
         + run.processed_pocket.transform.center[:, None, :]
     )
     assert torch.allclose(run.global_coordinates[valid], expected_global[valid])
+    fixed_ring = ~run.sampling_output.final_state.mask.diffusion_mask & valid
+    expected_ring = torch.tensor(
+        [[10.0, -5.0, 2.0], [11.0, -5.0, 2.0]]
+    )
+    assert torch.equal(run.global_coordinates[fixed_ring], expected_ring)
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["pipeline"] == "stage3_independent_inference"
@@ -91,6 +95,7 @@ def test_minimal_pocket_scaffold_pipeline_builds_field_and_calls_sampler(
     assert payload["trajectory_saved"] is False
     assert payload["config_reference"] == str(SMOKE_CONFIG)
     assert payload["samples"][0]["sample_id"] == "stage3-smoke-001"
+    assert payload["samples"][0]["diffusion_mask"] == [False, False, True]
     assert len(payload["samples"][0]["local_coordinates"]) == 3
     assert len(payload["samples"][0]["global_coordinates"]) == 3
     assert payload["samples"][0]["topology"]["edge_index"] == [
@@ -127,6 +132,18 @@ def test_pipeline_fixed_seed_is_reproducible(tmp_path: Path) -> None:
         first.sampling_output.final_state.bond_types,
         second.sampling_output.final_state.bond_types,
     )
+
+
+def test_standard_input_rejects_unknown_atom_category(tmp_path: Path) -> None:
+    input_payload = json.loads(SMOKE_INPUT.read_text(encoding="utf-8"))
+    input_payload["scaffold"]["atom_types"][0] = "Xe"
+    input_path = tmp_path / "unknown_atom.json"
+    input_path.write_text(json.dumps(input_payload), encoding="utf-8")
+    config = _config(tmp_path / "unused.json")
+    config["pipeline"]["input_path"] = str(input_path)
+
+    with pytest.raises(ConfigurationError, match="unsupported categories: Xe"):
+        run_stage3_inference(config)
 
 
 def test_yaml_entrypoint_runs_without_stage1_or_stage2_models(tmp_path: Path) -> None:

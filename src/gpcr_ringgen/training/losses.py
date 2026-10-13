@@ -31,18 +31,18 @@ class Loss(ABC):
 def masked_coordinate_mse(
     prediction: Tensor,
     target: Tensor,
-    atom_mask: Tensor,
+    diffusion_mask: Tensor,
     *,
     reduction: str = "mean",
 ) -> Tensor:
-    """Compute DDPM coordinate-noise MSE over valid atoms only.
+    """Compute DDPM coordinate-noise MSE over diffused non-ring atoms only.
 
     Args:
         prediction: Shape ``[B, N, 3]``; floating-point on the model device.
         target: Shape ``[B, N, 3]``; same dtype/device as ``prediction``.
-        atom_mask: Shape ``[B, N]``; ``torch.bool`` on the same device.
-            ``True`` atoms contribute all three coordinate components;
-            ``False`` padding contributes neither values nor denominator count.
+        diffusion_mask: Shape ``[B, N]``; ``torch.bool`` on the same device.
+            ``True`` non-ring atoms contribute all coordinate components;
+            fixed ring atoms and padding do not contribute.
         reduction: ``"mean"`` divides by ``3 * number_of_valid_atoms``;
             ``"sum"`` returns the masked squared-error sum. Both are scalars.
     """
@@ -59,14 +59,14 @@ def masked_coordinate_mse(
         raise TypeError("target dtype must match prediction")
     if target.device != prediction.device:
         raise ValueError("target device must match prediction")
-    if not isinstance(atom_mask, Tensor) or atom_mask.ndim != 2:
-        raise ValueError("atom_mask must be a torch.Tensor with shape [B, N]")
-    if tuple(atom_mask.shape) != tuple(prediction.shape[:2]):
-        raise ValueError("atom_mask shape must match prediction [B, N]")
-    if atom_mask.dtype != torch.bool:
-        raise TypeError("atom_mask must have dtype torch.bool")
-    if atom_mask.device != prediction.device:
-        raise ValueError("atom_mask device must match prediction")
+    if not isinstance(diffusion_mask, Tensor) or diffusion_mask.ndim != 2:
+        raise ValueError("diffusion_mask must have shape [B, N]")
+    if tuple(diffusion_mask.shape) != tuple(prediction.shape[:2]):
+        raise ValueError("diffusion_mask shape must match prediction [B, N]")
+    if diffusion_mask.dtype != torch.bool:
+        raise TypeError("diffusion_mask must have dtype torch.bool")
+    if diffusion_mask.device != prediction.device:
+        raise ValueError("diffusion_mask device must match prediction")
     if not bool(torch.isfinite(prediction).all()):
         raise ValueError("prediction contains NaN or Inf")
     if not bool(torch.isfinite(target).all()):
@@ -74,10 +74,10 @@ def masked_coordinate_mse(
     if reduction not in {"mean", "sum"}:
         raise ValueError("reduction must be 'mean' or 'sum'")
 
-    weights = atom_mask.unsqueeze(-1).to(prediction.dtype)
-    valid_atom_count = atom_mask.sum()
+    weights = diffusion_mask.unsqueeze(-1).to(prediction.dtype)
+    valid_atom_count = diffusion_mask.sum()
     if int(valid_atom_count.item()) == 0:
-        raise ValueError("atom_mask must contain at least one valid atom")
+        raise ValueError("diffusion_mask must contain at least one diffused atom")
     squared_error = (prediction - target).square() * weights
     total = squared_error.sum()
     if reduction == "sum":
@@ -104,7 +104,7 @@ class NoisePredictionLoss(nn.Module, Loss):
         """Return scalar mask-aware epsilon-prediction MSE."""
 
         if mask is None:
-            raise ValueError("atom mask is required for diffusion loss")
+            raise ValueError("diffusion mask is required for diffusion loss")
         return masked_coordinate_mse(
             prediction,
             target,
@@ -116,11 +116,11 @@ class NoisePredictionLoss(nn.Module, Loss):
         self,
         prediction: Tensor,
         target: Tensor,
-        atom_mask: Tensor,
+        diffusion_mask: Tensor,
     ) -> Tensor:
         """Delegate module calls to :meth:`compute`."""
 
-        return self.compute(prediction, target, atom_mask)
+        return self.compute(prediction, target, diffusion_mask)
 
 
 def masked_categorical_cross_entropy(

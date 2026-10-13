@@ -1,0 +1,31 @@
+nohup: ignoring input
+Loading template-based expansion policy model from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_model.onnx to uspto
+Loading templates from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_templates.csv.gz to uspto
+Loading template-based expansion policy model from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/policies/ringbreaker/uspto_ringbreaker_model.onnx to ringbreaker
+Loading templates from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/policies/ringbreaker/uspto_ringbreaker_unique_templates.csv.gz to ringbreaker
+Loading stock from InMemoryInchiKeyQuery to zinc
+Loading stock from InMemoryInchiKeyQuery to askcos
+Selected as stock: zinc, askcos
+Compounds in stock: 17616119
+Selected as expansion policy: uspto_ringbreaker
+Done with OC1C2Cc3cccnc3C(C2)C1O in 4.55e+02 s and is not solved
+Done with CCOC(=O)C[C@H]1O[C@H]2C[C@H](C)[C@H]3O[C@H]4CC(=O)O[C@@]4(C)CC[C@H]3O[C@H]2C[C@]1(C)O in 3.47e+02 s and is not solved
+Done with COc1ccc([N+](=O)[O-])cc1C12O[C@H]3[C@@H](O)C=C[C@H]4[C@H]5CC(=C1[C@]43CCN5C)C=CC2O in 2.58e+02 s and is not solved
+Done with NC(=O)C1CCCCCCCc2cccc(c2)-c2cccc(c2)C1 in 1.94e+02 s and is solved
+Done with C[C@@H]1CCC[C@H](N)c2cccc(c2)-c2c(Cl)cncc2NC1=O in 2.24e+02 s and is not solved
+Done with Cn1ccc(C2CC3COCNCCCOC4CCC5NNC(C(C3)C2)C5C4)n1 in 4.16e+02 s and is not solved
+Done with O=P12c3ccccc3P(=O)(c3ccccc31)c1ccccc12 in 3.34e+02 s and is not solved
+Done with CC1(C)c2cc(C=C(C#N)C#N)sc2N2c3ccccc3[Si](C)(C)c3cccc1c32 in 3.51e+02 s and is not solved
+Done with CO[C@]1(C)CC[C@@H]2[C@@H](C2(C)C)[C@@]2(C)[C@H]1CCC2(C)C in 3.96e+02 s and is not solved
+Done with CC1=CO[C@@H]2C/C(C)=C/CC[C@@]3(C)O[C@H]3C(=O)[C@H]12 in 3.87e+02 s and is not solved
+Done with Oc1[nH]c(Sc2ccccc2)c2c1N1c3ccccc3CC1c1[nH]c3ccccc3c1-2 in 4.95e+02 s and is not solved
+Done with c1cc2cccc3c2c(c1)c1cccc2ncc3n21 in 5.81e+02 s and is not solved
+Done with CC=CC1=C(CC)C2=C(CC1)OCC(C1CCC(CCC)CC1)COc1ccc3ccccc3c12 in 3.11e+02 s and is not solved
+Done with O=C(Cc1ccc(Cl)c(Cl)c1)NCCc1cccc2c1NS(=O)(=O)c1ccc(cc1)CO2 in 2.4e+02 s and is not solved
+Done with CC1=C(C#N)CC1c1ccc([S+]2C3=C(CCC=[C-]3)Sc3ccccc32)cc1 in 6e+02 s and is not solved
+Done with CO[C@@H]1c2cc(C(C)C)c(O)c(O)c2[C@@]23CCCC(C)(C)[C@@H]2[C@]1(OC)OC3=O in 1.97e+02 s and is not solved
+Done with CC1=C(C)C2(C)C(C)(C)C(C)(C)C(C)(C)C(C)(C)C1(C)C(C)(C)C2(C)C in 6.01e+02 s and is not solved
+Done with COc1ccc(N2C(=O)[C@H]3OC[C@@]4(C)OC[C@@H]([C@H]32)N4C(=O)OC(C)(C)C)cc1 in 2.48e+02 s and is not solved
+Done with C#CCOC1NC2=NC(Cl)C1CCCCC2CC in 3.04e+02 s and is not solved
+Done with C=C(CCC(C)[C@H]1CC[C@@]2(C)C3CCC4C[C@@H](O)CCC45CC35CC[C@]12C)C(C)C in 4.77e+02 s and is not solved
+Output saved to /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_results/double_failed_20_ringbreaker_deep.json.gz

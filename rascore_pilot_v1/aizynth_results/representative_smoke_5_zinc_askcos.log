@@ -1,0 +1,13 @@
+Loading template-based expansion policy model from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_model.onnx to uspto
+Loading templates from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_templates.csv.gz to uspto
+Loading stock from InMemoryInchiKeyQuery to zinc
+Loading stock from InMemoryInchiKeyQuery to askcos
+Selected as stock: zinc, askcos
+Compounds in stock: 17616119
+Selected as expansion policy: uspto
+Done with c1cc2c3c(c1)c1cccc4c1c1c(ccc(c31)CC2)CC4 in 51.7 s and is not solved
+Done with CCCOc1cc(COC2CC3CCC4CN3C4C2)c2ccccc2n1 in 29.3 s and is not solved
+Done with C[C@H]1CC[C@@H]2[C@H]([C@@H]3[C@]4(C)CC[C@@]31Oc1c(C=O)c(O)c(C=O)c(O)c1[C@@H]4c1ccccc1)C2(C)C in 35.7 s and is not solved
+Done with CC(=O)N1c2ccccc2C2OC2=C2C=CC=CC21 in 62.9 s and is not solved
+Done with CCN1C(=O)NCCCCCCCOc2nc(cn3ccnc23)-c2cc(ncc2OC)[C@H]1C in 52.4 s and is not solved
+Output saved to aizynth_results/representative_smoke_5_zinc_askcos.json.gz

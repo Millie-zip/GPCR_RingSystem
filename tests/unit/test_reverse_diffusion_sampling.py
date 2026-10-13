@@ -111,11 +111,19 @@ def _stage3_input(
                 ],
                 dtype=dtype,
             ),
+            atom_types=torch.tensor(
+                [[0, 1, 2, 3], [0, 1, 0, 0]],
+                dtype=torch.long,
+            ),
             edge_index=torch.tensor(
                 [
                     [[0, 1, 2, 3], [1, 2, 3, 0]],
                     [[0, -1, -1, -1], [1, -1, -1, -1]],
                 ],
+                dtype=torch.long,
+            ),
+            bond_types=torch.tensor(
+                [[0, 1, 2, 3], [0, 0, 0, 0]],
                 dtype=torch.long,
             ),
             edge_features=torch.tensor(
@@ -125,8 +133,13 @@ def _stage3_input(
                 ],
                 dtype=dtype,
             ),
+            coordinates=torch.zeros(2, 4, 3, dtype=dtype),
         ),
-        mask=BatchMask(atom_mask=atom_mask, edge_mask=edge_mask),
+        mask=BatchMask(
+            atom_mask=atom_mask,
+            edge_mask=edge_mask,
+            diffusion_mask=atom_mask.clone(),
+        ),
         metadata=BatchMetadata(
             sample_ids=("sample-0", "sample-1"),
             records=({"row": 0}, {"row": 1}),
@@ -224,6 +237,29 @@ def test_toy_reverse_sampling_runs_with_batch_mask_and_descriptor() -> None:
         torch.zeros((2, 3)),
         atol=1.0e-6,
     )
+
+
+def test_every_reverse_step_keeps_ring_coordinates_fixed() -> None:
+    stage3_input, _ = _stage3_input()
+    stage3_input.mask.diffusion_mask = torch.tensor(
+        [[False, False, True, True], [False, True, False, False]]
+    )
+    stage3_input.scaffold.coordinates[0, 0] = torch.tensor([1.0, 2.0, 3.0])
+    stage3_input.scaffold.coordinates[0, 1] = torch.tensor([-1.0, 0.5, 2.0])
+    stage3_input.scaffold.coordinates[1, 0] = torch.tensor([4.0, -2.0, 1.0])
+
+    output = DDPMStage3Sampler(_schedule(num_timesteps=3)).sample(
+        stage3_input,
+        _conditioned_model("none").eval(),
+        seed=29,
+        return_trajectory=True,
+    )
+
+    assert output.trajectory is not None
+    fixed_ring = stage3_input.mask.atom_mask & ~stage3_input.mask.diffusion_mask
+    expected = stage3_input.scaffold.coordinates[fixed_ring]
+    for coordinates in output.trajectory:
+        assert torch.equal(coordinates[fixed_ring], expected)
 
 
 def test_fixed_seed_sampling_is_reproducible_and_local_rng_only() -> None:

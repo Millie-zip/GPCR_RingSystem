@@ -1,0 +1,31 @@
+search:
+  algorithm: mcts
+  max_transforms: 7
+  iteration_limit: 1000
+  time_limit: 600
+  return_first: false
+  exclude_target_from_stock: true
+expansion:
+  uspto:
+    type: template-based
+    model: /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_model.onnx
+    template: /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_templates.csv.gz
+    cutoff_cumulative: 0.995
+    cutoff_number: 50
+    use_rdchiral: true
+  ringbreaker:
+    type: template-based
+    model: /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/policies/ringbreaker/uspto_ringbreaker_model.onnx
+    template: /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/policies/ringbreaker/uspto_ringbreaker_unique_templates.csv.gz
+    cutoff_cumulative: 0.995
+    cutoff_number: 50
+    use_rdchiral: true
+  uspto_ringbreaker:
+    type: aizynthfinder.context.policy.expansion_strategies.MultiExpansionStrategy
+    expansion_strategies:
+    - uspto
+    - ringbreaker
+    additive_expansion: true
+stock:
+  zinc: /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/zinc_stock_17_04_20.hdf5
+  askcos: /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/enamine/askcos_buyables_stock.hdf5

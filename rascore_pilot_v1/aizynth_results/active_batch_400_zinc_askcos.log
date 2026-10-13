@@ -1,0 +1,409 @@
+nohup: ignoring input
+Loading template-based expansion policy model from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_model.onnx to uspto
+Loading templates from /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_public_data/uspto_templates.csv.gz to uspto
+Loading stock from InMemoryInchiKeyQuery to zinc
+Loading stock from InMemoryInchiKeyQuery to askcos
+Selected as stock: zinc, askcos
+Compounds in stock: 17616119
+Selected as expansion policy: uspto
+Done with c1ccc(-c2ccc3c(c2)c2ccccc2c2[nH]c4c5ccccc5c5ccccc5c4c32)cc1 in 36.0 s and is solved
+Done with Cc1ccc2cc1-c1cnn3ccc(nc13)CCCN1CCC[C@H]1CO2 in 44.0 s and is solved
+Done with CN1CCCNC(=O)[C@@H]2CCCN2Cc2cccc(c2)Nc2nccc(n2)-c2ccc(cc2)C1 in 37.1 s and is solved
+Done with c1ccc2c(c1)ccc1[nH]c3c4ccccc4c4c5ccccc5sc4c3c12 in 36.9 s and is solved
+Done with c1ccc2c(c1)Cc1cc3c4c5c(ccc4c4nc6ccccc6n4c3cc1-2)Cc1ccccc1-5 in 35.6 s and is not solved
+Done with c1ccc2c(c1)[nH]c1c2ccc2c1c1ncccc1n1c3cccnc3nc21 in 55.2 s and is solved
+Done with c1ccc2c(c1)OCc1[nH]c3c(ccc4ccccc43)c1-2 in 32.4 s and is solved
+Done with c1ccc2c(c1)ccc1cc3c(cc12)c1cccnc1n1cccc31 in 50.7 s and is not solved
+Done with c1ccc2c(c1)ccc1c2[nH]c2c3ccccc3c3ccc4ccccc4c3c12 in 50.3 s and is solved
+Done with OC1c2cc3c4c(c5ccccc5cc4c2C2OC2C1O)-c1ccccc1-3 in 47.9 s and is not solved
+Done with Ic1ccccc1-c1cc2occc2c2c1[nH]c1ccccc12 in 29.2 s and is solved
+Done with c1ccc2c(c1)sc1cc3sc4ccc5c(c6cccnc6c6nccn56)c4c3cc12 in 34.9 s and is not solved
+Done with c1ccc2c(c1)ccc1[nH]c3ccc4ccsc4c3c12 in 26.9 s and is solved
+Done with CC1(C)c2cc3ccccc3cc2-c2c1ccc1[nH]c3c4ccccc4ccc3c21 in 47.0 s and is solved
+Done with c1ccc2c(c1)CCCc1cc3c(cc1-2)[nH]c1ccccc13 in 34.4 s and is solved
+Done with c1ccc2c(c1)cc1c3c(cccc32)-c2c-1c1ccccc1c1ccccc21 in 39.4 s and is solved
+Done with c1ccc2c(c1)-c1cc3ccc4ccc5ccccc5c4c3cc1-2 in 41.8 s and is solved
+Done with c1ccc2c(c1)cc1c3c2[nH]c2cccc(c23)CCC1 in 33.9 s and is solved
+Done with c1ccc2c(c1)ccc1[nH]c3c4ccccc4c4oc5ccccc5c4c3c12 in 56.1 s and is solved
+Done with c1ccc2nc(-c3ccc4c(c3)c3ccccc3c3nc5ccccc5n43)ccc2c1 in 20.8 s and is solved
+Done with c1cc2c(s1)CNCCOCCNCc1sccc1OCCSCCO2 in 29.3 s and is solved
+Done with c1ccc2c(c1)COc1ccccc1-c1nnn(n1)-c1ccccc1OC2 in 1.07e+02 s and is not solved
+Done with Cc1ccc2c(c1)Cc1cc(C)c(O)cc1-c1cc(ccc1O)Cc1cccc-2c1 in 41.7 s and is not solved
+Done with O=C1NCCNC(=O)c2ccccc2OCc2ccccc2COc2ccccc21 in 47.5 s and is solved
+Done with c1ccc2c(c1)Cc1cc3c4c(c1-2)Cc1ccc[n+](c1-4)CO3 in 43.5 s and is not solved
+Done with Clc1ccc2c(c1)Oc1ccc3ccccc3c1-c1ccccc1-2 in 35.0 s and is solved
+Done with FC(F)(F)COc1nc2nc(n1)NC1(CC1)c1ccc(cc1)OCCCCOc1cccc(c1)N2 in 49.4 s and is solved
+Done with FC(F)(F)c1ccccc1-c1cc2c3c(c1)[C@@H]1CNCC[C@@H]1N3CCSC2 in 32.9 s and is not solved
+Done with Cc1ccc(S(=O)(=O)N2CC#CCCc3ccccc3-c3ccccc32)cc1 in 27.0 s and is solved
+Done with c1ccc2c(c1)-c1ccc3ccc4c5ccccc5cc5cc-2c1c3c54 in 39.0 s and is solved
+Done with c1ccc2c(c1)Cc1ccc3c(c1-2)-c1ccc2c(c1C3)c1ncccc1n1ccnc21 in 34.2 s and is not solved
+Done with O=C1NC[C@@H](F)COc2ccc3[nH]nc(c3c2)-c2cccc(c2)CO1 in 46.9 s and is solved
+Done with c1ccc2c(c1)Cc1cc3c(cc1-2)c1c2c(ccc1n1cccc31)-c1ccccc1C2 in 42.7 s and is not solved
+Done with c1ccc(-c2nc(-c3nnc4snnn34)cc3c2[nH]c2ccccc23)cc1 in 50.5 s and is solved
+Done with C1=Cc2c(ccc3cc4c(cc23)Cc2ccccc2-4)C1 in 27.2 s and is solved
+Done with c1ccc(N2c3cccc(c3)-c3cccc(n3)CCCc3cccc(n3)-c3cccc2c3)cc1 in 34.7 s and is solved
+Done with CCN1c2ccc3ccccc3c2-c2ccccc2-n2c1cc1ccccc12 in 44.3 s and is solved
+Done with c1ccc2c(c1)CCc1sc3ccc4ccccc4c3c1-2 in 34.7 s and is solved
+Done with COc1ccc(C2=C3c4ccccc4CO[C@]3(C)c3ccc4cc(OC)ccc4c32)cc1 in 48.2 s and is not solved
+Done with O=c1c2sc3nc4c(cc3c2nnn1-c1ccccc1Cl)CCCCC4 in 45.0 s and is solved
+Done with O=c1c2sc3nc4c(cc3c2nnn1-c1ccccc1Cl)CCCCCCCC4 in 52.9 s and is not solved
+Done with CC1(C)c2ccccc2-c2ccc3[nH]c4c(ccc5oc(-c6ccccc6)nc54)c3c21 in 28.1 s and is solved
+Done with c1ccc2c(c1)Cn1c(cc3ccccc31)-c1sccc1-2 in 44.4 s and is solved
+Done with c1ccc2cc3c(cc2c1)c1c2ccccc2ccc1n1c2ccccc2cc31 in 73.3 s and is not solved
+Done with c1ccc2c(c1)Cc1ccc3c(c1-2)c1ccccc1c1ccc2ccccc2c13 in 49.0 s and is solved
+Done with CC(C)(C)c1cc2c(nn1)CCCc1ccccc1-2 in 33.7 s and is solved
+Done with Cc1c2c(nc3cc4c(cc13)OCO4)-c1ccccc1CCC2 in 26.1 s and is solved
+Done with c1ccc2c(c1)Cc1cc3c(cc1-2)nc1c2cnccc2c2cccnc2n31 in 35.6 s and is solved
+Done with c1ccc(-c2cccc(N3c4ccccc4-c4ccccc4-c4ccc5c(c43)CCO5)c2)cc1 in 38.5 s and is solved
+Done with c1ccc2c(c1)Cc1cccn1-c1ccccc1-c1ccccc1-2 in 39.0 s and is solved
+Done with CC1(C)c2ccccc2-c2ccc3c([nH]c4cc5oc(-c6ccccc6)nc5cc43)c21 in 25.2 s and is not solved
+Done with C=C1c2cccc(c2)OCC(=O)NCCCOc2cccc(c2)Nc2ccnc1n2 in 51.1 s and is not solved
+Done with CN(C)CCNc1nc2ccccc2c2[nH]c3c(c12)/C=C\CC#CC3 in 50.1 s and is not solved
+Done with Oc1cc2ccc1-c1ccccc1CCc1ccc(cc1)Oc1cccc(c1)CC2 in 41.7 s and is solved
+Done with c1ccc2cc3c(ccc4c3c3cccnc3n3ccnc43)cc2c1 in 30.0 s and is solved
+Done with Oc1[nH]cc2c3c(c4[nH]c5ccccc5c4c12)-c1ccccc1CC3 in 35.6 s and is not solved
+Done with c1ccc(N2c3ccccc3-c3ccccc3-c3c2ccc2[nH]c4ccccc4c32)cc1 in 43.3 s and is solved
+Done with c1cc2cc(c1)-c1cccc(c1)-c1cccc(c1)OCCO2 in 19.1 s and is solved
+Done with c1ccc2c(c1)ccc1c2c2cc3oc4ccccc4c3cc2n2c3ccccc3nc12 in 59.6 s and is not solved
+Done with O=C1Nc2sc3c(c2C(=O)Nc2c1sc1nc(-c4ccco4)cc(C(F)(F)F)c21)CCC3 in 67.3 s and is solved
+Done with Cc1cc2[n+](c3c1S(=O)(=O)c1ccccc1-3)CCc1ccccc1-2 in 49.9 s and is not solved
+Done with c1ccc2c(c1)Cc1c-2ccc2c1ccc1c3ccccc3[nH]c21 in 31.4 s and is solved
+Done with c1ccc2c(c1)Cc1cc3cc4c(cc3cc1-2)-c1ccccc1C4 in 40.1 s and is solved
+Done with c1ccc2c(c1)ccc1c3nc4nsnc4nc3c3sccc3c21 in 32.0 s and is not solved
+Done with C1=c2ccc([nH]2)=Cc2ccc([nH]2)C=c2[nH]c(c3ccc4ccccc4c23)=Cc2ccc1[nH]2 in 77.3 s and is not solved
+Done with O=C1NCCCCCc2cc(ccc2N2CCCCC2)Nc2nccc(n2)-c2ccc1cc2 in 22.1 s and is solved
+Done with c1ccc(-c2sc(-c3ccccc3)c3c2c2c4ccccc4sc2c2sc4ccccc4c23)cc1 in 24.0 s and is not solved
+Done with c1ccc(-c2cc(-c3cccs3)nc3sc4c(c23)N=NN2CCN=C42)cc1 in 48.4 s and is not solved
+Done with CN1CCCOc2ccccc2-c2cnc(N)c(n2)C(=O)Nc2ccccc21 in 27.3 s and is solved
+Done with Cc1ccc2c(c1)-c1c3ccccc3c3c4c(ccc(c14)O2)Oc1ccc(C)cc1-3 in 39.0 s and is not solved
+Done with O=C1NCCCNCCCCCCCCNc2nc(nc(OCC(F)(F)F)n2)Nc2ccc1cc2 in 46.7 s and is solved
+Done with c1ccc2c(c1)ccc1c2ccn2c3nccnc3nc12 in 41.1 s and is solved
+Done with c1ccc2c(c1)[nH]c1c2ccc2c3cc[nH]c3ccc21 in 34.4 s and is solved
+Done with c1ccc2c(c1)Nc1cc3ccccc3c3nccc-2c13 in 33.8 s and is solved
+Done with COc1cccc2c1-c1c(ccc3ccc4ccc5ccccc5c4c13)C2=O in 37.0 s and is not solved
+Done with C1=Nc2cc3[nH]c(-c4ccccc4)c(-c4ccccc4)c3cc2Oc2ccccc21 in 27.4 s and is solved
+Done with c1ccc2c(c1)[nH]c1c3oc4ccccc4c3c3cccnc3c21 in 54.8 s and is solved
+Done with c1ccc2c(c1)ccc1c2ccc2c1ccc1c3ccccc3[nH]c12 in 32.7 s and is solved
+Done with Cc1ccc2c(c1)S(=O)(=O)c1ccc3c(c1N2)C(=O)c1ccccc1C3=O in 55.1 s and is solved
+Done with COc1ccc(C2=C3C(=C(c4ccccc4)c4c3sc3ccccc43)c3ccccc32)cc1 in 1.41e+02 s and is not solved
+Done with CC/N=C1C(=C\N)/Oc2cccnc2-c2ccc(F)cc2COc2cc/1cnc2N in 67.4 s and is not solved
+Done with c1ccc2c(c1)CNCCNCCNCc1ccccc1OCCCCO2 in 52.8 s and is solved
+Done with Cc1ccc2cc1C(=O)NCCNc1cc(ccn1)-c1ccnc(n1)N2 in 19.6 s and is solved
+Done with c1cc2cc(c1)Nc1nccc(n1)-c1ccc(nc1)NCCCNCC1CCN(C2)C1 in 43.5 s and is solved
+Done with c1ccc2c(c1)Cc1c3c(c4c(ccc5ccccc54)c1-2)-c1ccccc1C3 in 50.7 s and is not solved
+Done with O=C1NC(=O)c2c1c1sccc1c1[nH]c3ccccc3c21 in 30.9 s and is not solved
+Done with CN1CCN(C)Cc2sccc2OCCCCCCOc2ccsc2C1 in 30.4 s and is not solved
+Done with c1ccc2cc3c(cc2c1)Sc1ccc2c([nH]c4ccccc42)c1S3 in 42.4 s and is not solved
+Done with O=C1OCc2ccccc2C#Cc2ccccc2COC(=O)c2ccccc21 in 76.2 s and is solved
+Done with Cc1cccc2ccccc2[nH]c2ccc(-c3ccccc3)cc12 in 62.3 s and is not solved
+Done with Cc1ccc2c(ccc3c4ccc5ccccc5c4c4c(c23)=NS(=O)(=O)N=4)c1 in 75.5 s and is not solved
+Done with Clc1nc2ccccc2n2c1cc1nc3ccccc3nc12 in 77.9 s and is not solved
+Done with c1ccc2cc3c4c(ccc3cc2c1)Cc1sccc1-4 in 37.1 s and is solved
+Done with NC1=Nc2ccc3cc2CN1CCNC(=O)CCCCOc1ccccc1-3 in 30.4 s and is solved
+Done with Oc1ccc2cc3c(cc2c1)sc1c3c2ccc(O)c3c4ccccc4n1c23 in 38.1 s and is not solved
+Done with c1ccc2c(c1)Cc1c-2c2ccccc2c2c1sc1ccc3ccccc3c12 in 39.7 s and is not solved
+Done with c1ccc2c3c4c(c5ccccc5cc4cc2c1)SS3 in 56.6 s and is not solved
+Done with c1cnc2c(c1)c1c(c3cccnc32)OCCOCCSCCOCCO1 in 25.7 s and is not solved
+Done with c1ccc2c(c1)ccc1cc3c4cccnc4c4cc5ccccc5n4c3cc12 in 42.3 s and is not solved
+Done with Brc1ccc2sc3nc4c5ccccc5c(-c5ccccc5)nc4n3c2c1 in 55.7 s and is not solved
+Done with c1ccc(-c2[nH]c3ccccc3[nH]c3ccccc3c2-c2ccccc2)cc1 in 55.0 s and is not solved
+Done with CC1(C)c2cccc3c2-c2c1c1c(c4cccc(c24)C3(C)C)S(=O)(=O)c2ccccc2-1 in 43.2 s and is not solved
+Done with CN1CCc2cc(F)cnc2OCCNC(=O)c2cnn3ccc1nc23 in 28.7 s and is solved
+Done with Cc1ccc2c3c(cccc13)-c1c-2c2cccnc2c2ncccc12 in 27.4 s and is not solved
+Done with Nc1c2nnc2c(S(=O)(=O)O)c2c(-c3ccccc3)c(-c3ccccc3)c3nnc3c12 in 23.9 s and is not solved
+Done with O=C1Cc2c(c3c4cc5ccccc5cc4ccc3c3ccccc23)-c2ccccc21 in 43.8 s and is not solved
+Done with c1ccc(-n2c3cccc4sc5cc(-c6cc7[nH]c8cccc9sc(c6)c7c89)cc2c5c43)cc1 in 42.5 s and is solved
+Done with c1ccc2c(c1)OCCOCCOc1cccnc1OCCOCNO2 in 41.7 s and is not solved
+Done with CC1(C)Oc2ccccc2-c2ccc3c(c2)-c2c(cccc2C3(C)C)O1 in 35.9 s and is not solved
+Done with c1ccc2cc3c(ccc4c3ccc3cn[nH]c34)cc2c1 in 28.3 s and is solved
+Done with Cc1ccccc1-c1cc2nc(n1)NS(=O)(=O)c1cccc(c1)Nc1cccc(c1)O2 in 56.9 s and is solved
+Done with Cc1ccc2c(c1)c1ccn(-c3ccccc3)c1c1ccn(-c3ccccc3)c21 in 19.8 s and is solved
+Done with C1=CC(c2ccccc2)(c2ccccc2)Oc2cc3c(ccc4ccc5ccccc5c43)cc21 in 39.1 s and is solved
+Done with O=C1CNC(=O)[C@H]2O[C@@H](CNC(=O)CNC(=O)[C@H]3O[C@@H](CN1)[C@H](O)[C@@H](O)[C@@H]3O)[C@H](O)[C@@H](O)[C@@H]2O in 59.8 s and is not solved
+Done with O=C1NSCCCNCCOC2=C1Cn1c(cc3ccccc31)-c1ccccc1O2 in 1.34e+02 s and is not solved
+Done with c1ccc2c(-c3ccc4c5cc6cc7ccc6c(c6cccc3c46)c75)cccc2c1 in 47.9 s and is not solved
+Done with c1ccc2c(c1)ccc1cc3c(cc4c5c(cccc53)CC4)cc12 in 48.8 s and is not solved
+Done with c1cc2cc(c1)Oc1ccc(cc1)Oc1ccccc1N2 in 62.5 s and is solved
+Done with c1ccc2c(c1)cc1c3c4ccccc4ccc3c3cccc4ccc2c1c43 in 57.8 s and is solved
+Done with CN1Cc2ccccc2-c2c(ccc3ccccc23)O[C@@H](c2ccccc2)C1 in 46.6 s and is solved
+Done with O=c1[nH]c(=O)c2c1c1[nH]c3cc4c(cc3c1c1c(=O)[nH]c(=O)c21)OCO4 in 40.8 s and is not solved
+Done with O=C1NCC2c3ccccc3C(=O)N2Cc2ccsc21 in 28.9 s and is solved
+Done with CCC1c2cc3nc(NCCN)cc(n3n2)N(C)CCOCCOc2ccc(C)cc2C(=O)N1C in 29.0 s and is not solved
+Done with c1cc2c3ccc4sccc4c3ccn2c1 in 48.7 s and is solved
+Done with O=C1N[C@@H](Cc2ccccc2)C(=O)NCCCNCc2cn(nn2)CCCOc2ccc1cc2Cl in 75.9 s and is not solved
+Done with CC(C)(C)OC(=O)CN1C(=O)c2c(F)cc(cc2F)Oc2ccccc2-c2cccc1c2 in 25.3 s and is solved
+Done with c1ccc2c(c1)coopc1ccccc12 in 40.5 s and is not solved
+Done with c1ccc(-c2ccc3c(ccc4[n+]3Cc3cc5ccccc5cc3-4)c2)cc1 in 52.5 s and is not solved
+Done with c1ccc(-c2ccc3c(c2)-c2cc4[nH]c5ccccc5c4c4c2C3Cc2ccccc2-4)cc1 in 47.8 s and is not solved
+Done with Cc1cc2c(cc1C)-n1c(-c3ccc(C4CS4)cc3)nnc1-c1cc3ccccc3cc1O2 in 59.8 s and is not solved
+Done with C1=C\COCc2cc(ccc2OCCN2CCCC2)Nc2nccc(n2)-c2ccc(s2)COC/1 in 27.4 s and is solved
+Done with Cc1cc2c(s1)=Nc1ccccc1CC=2N1CCN(C)CC1 in 35.7 s and is not solved
+Done with c1ccc2c(c1)NCCCCOCCOc1ccccc1NCCCCOCCO2 in 47.6 s and is not solved
+Done with O=C1OCc2ccccc2OC(=O)c2cccc([N+](=O)[O-])c2-c2occc21 in 48.6 s and is solved
+Done with Nc1ncc2nc1C(=O)Nc1ccccc1N1CCC(CC1)Oc1cccc-2c1 in 38.9 s and is solved
+Done with O=C1Nc2ccc(cc2)NC(=O)c2ccccc2NCCNc2ccccc21 in 73.5 s and is not solved
+Done with CCC1(Oc2ccc(C3=C/[N+]4=CC(c5ccc(S)c6ccccc56)=C(CC4)/N=C\3)cc2)CC1 in 87.0 s and is not solved
+Done with OC1=C(O)C2OC2c2c1ccc1ccc3ccccc3c21 in 76.2 s and is not solved
+Done with c1ccc2c(c1)NC1c3c(ccc4ccccc34)-c3ccccc3N21 in 64.2 s and is not solved
+Done with c1ccc2c(c1)Cc1sc([C@H]3CCN4CCC[C@@H]3C4)nc1-2 in 38.2 s and is not solved
+Done with CC1(C)c2cc3ccc4ccccc4c3cc2-c2c3ccccc3cc3cccc1c23 in 57.5 s and is solved
+Done with COc1cc2ccccc2c2c1CC1=C(CC=C1)Cc1c(OC)cc3ccccc3c1-2 in 33.9 s and is not solved
+Done with C=CC(=O)N1CCCCCCn2cc(c3ccccc32)-c2ccnc(n2)Nc2cccc1c2 in 21.8 s and is solved
+Done with c1ccc2c(c1)CCCc1nnc3nc4ccccc4n3c1-2 in 52.8 s and is not solved
+Done with CB1N(C)B(C)N2B(N1C)N(C)B1N(B2C)c2ccccc2-c2nccn21 in 66.5 s and is not solved
+Done with c1ccc2c(c1)-c1nc-2nc2[nH]c(nc3[nH]c(n1)c1ccccc31)c1ccccc21 in 38.3 s and is not solved
+Done with c1ccc2c(c1)ccc1cc3cc4c5c(cccc5c3cc12)CC4 in 53.4 s and is not solved
+Done with COc1ccc2c(c1)c1cccc3c1c2c1cccc2c4ccsc4c3c21 in 32.5 s and is not solved
+Done with Fc1ccc(C2C3=C(Nc4nc5ccccc5n42)c2ccccc2OC3)cc1 in 53.9 s and is solved
+Done with CCN1c2ccc3ccccc3c2-c2ccc3ccccc3c2-n2c1cc1ccccc12 in 43.8 s and is solved
+Done with CNc1nc(N)nc2nc3c(cc12)CCCc1ccccc1-3 in 28.6 s and is not solved
+Done with C/N=C1\CCCNC(=O)C2CC(CN2C(=O)OC(C)(C)C)Oc2cccc(c2)-c2cccc(N)c21 in 42.6 s and is not solved
+Done with O=C1Nc2ncccc2COc2ccc(F)cc2[C@H]2CCCN2c2n[nH]c3ncc1cc23 in 42.0 s and is not solved
+Done with c1cc2cccc3c4cccc-4cccc3c-2c1 in 32.0 s and is not solved
+Done with N#Cc1cc2c(cc1C#N)c1c3ccccc3c3ccccc3c1c1cccnc21 in 27.3 s and is not solved
+Done with C[C@H]1Nc2ccn3ncc(c3n2)C(=O)NC[C@H]2Cc3cc(F)cc1c3O2 in 45.4 s and is not solved
+Done with c1cc2c3c(csc3c1)-c1cc3sccc3cc1-2 in 22.1 s and is solved
+Done with O=S1(=O)c2ccc[n+]([O-])c2-c2cccnc21 in 23.3 s and is solved
+Done with O=C1CC2CN(c3ccccc31)n1c2cc2cccnc21 in 49.7 s and is not solved
+Done with O=C1OCC2CCCN2Cc2ccccc21 in 50.1 s and is solved
+Done with Cc1c2ccccc2nc2cc3c(cc12)OCCOCCOCCOCCOCCO3 in 45.0 s and is solved
+Done with c1ccc2c(c1)CN1CSCC1c1c[nH]c3cccc-2c13 in 57.3 s and is not solved
+Done with O=C1Cn2cc(cn2)Nc2nc(nc(OCC(F)(F)F)n2)NCc2ccc(cc2)OCCCCN1 in 38.8 s and is solved
+Done with c1ccc2c(c1)Cc1ccc3c(c1-2)-c1nc2c4cnccc4c4ncccc4n2c1C3 in 33.1 s and is not solved
+Done with CN1CCCN(C)Cc2cn(c3ccccc23)-c2ccccc2-n2cc(c3ccccc32)C1 in 35.3 s and is solved
+Done with CN(C)S(=O)(=O)CCCN1C[C@@H]2NC(=O)c3ncccc3OCCn3cc(nn3)CO[C@H]2C1 in 35.7 s and is not solved
+Done with N#CN1Cc2ccc3c(c2)c2ccccc2n3CCn2c3ccccc3c3cc(ccc32)C1 in 66.1 s and is solved
+Done with O=C1c2ccccc2C2(Cc3cn(nn3)Cc3ccccc3Cn3cc(nn3)C2)c2ccccc21 in 88.5 s and is not solved
+Done with CCCc1c2[nH]c3ccccc3c2cc2nc3cccnc3n12 in 46.7 s and is not solved
+Done with O=C1c2ccccc2N(Cc2ccccc2)C2c3ccc(-c4ccccc4)cc3CCN12 in 21.7 s and is solved
+Done with CN1CCCCc2[nH]c3cccc4c3c2C(=CNC4=O)C1 in 60.9 s and is not solved
+Done with CN(C)C(=O)C(O)c1cncc(-c2cnc3[nH]cc4c3c2OCCc2ccccc2-4)c1 in 36.3 s and is solved
+Done with O=S1(=O)Oc2ccc3c(c21)-c1ccccc1-3 in 30.8 s and is not solved
+Done with CC1COCCOCCOc2ccccc2OC2=C(C=CCN2C)ONCO1 in 51.0 s and is not solved
+Done with CCS(=O)(=O)NC1CCN2C(=O)NCCOc3c(cccc3-c3ccccc3)CC12 in 57.8 s and is not solved
+Done with c1cncc(-c2ccc3cc4c5ccccc5c5cc6cccnc6c6ccc(c3n2)c4c56)c1 in 24.7 s and is not solved
+Done with Cc1ccc(S(=O)(=O)N2Cc3cc4c(c5cccc2c35)OCCOC(C)(O)CN4C)cc1 in 46.2 s and is not solved
+Done with O=C1c2ccccc2-c2nc3c4cccnc4c4ncccc4c3nc21 in 40.3 s and is solved
+Done with c1cc2[nH]c3cccc4c5cccc6[nH]c7cccc(c(c1)c2c34)c7c65 in 39.2 s and is solved
+Done with CC(C)=CC(=O)OC1=COc2cc3ccccc3c3c4c(cc1c23)CO4 in 51.0 s and is not solved
+Done with Brc1cc2[nH]ncc3ccc(c4c1OCC=C4)c32 in 23.9 s and is not solved
+Done with O=C1Cn2cc(nn2)COc2ccccc2C(CC(=O)c2cc3ccccc3oc2=O)N1 in 37.4 s and is solved
+Done with c1cc2c3ccc3c2c2cc3c(ccc4c5ccc5c34)cc12 in 46.1 s and is not solved
+Done with c1cc2c3nncn3c3ccsc3n2c1 in 30.7 s and is solved
+Done with Cc1ccc(-c2nc3c4ccc(c3c3ccccc23)CCc2ccc(cc2)CC4)cc1 in 38.5 s and is not solved
+Done with C1=N/CCCC/N=C/c2c(ccc3ccccc23)OCCCCOc2ccc3ccccc3c2/1 in 86.2 s and is not solved
+Done with NC(=O)N1c2ccccc2-c2nc3ncccn3c2-c2ccccc21 in 38.3 s and is solved
+Done with Sc1sc(S)c2c3ccccc3c3sc4c(c3-2)-c1c1ccccc14 in 72.8 s and is not solved
+Done with O=C1c2ccccc2-c2nnc3c(c21)CCCCCC3 in 39.1 s and is not solved
+Done with O=C1c2ccccc2-c2nnc3c(c21)CCCCC3 in 32.3 s and is solved
+Done with CC1NC=c2ccccc2=C1N1c2ccccc2-c2cc3c(cc2-c2ccccc21)OCC3 in 75.0 s and is not solved
+Done with COc1ccc2c(c1)OCCn1cc(nn1)CCC(=O)N[C@H]1CCCN(C1)C2=O in 36.8 s and is solved
+Done with C[n+]1ccn2c3ccccc3c3sc4ccccc4c3c21 in 51.0 s and is not solved
+Done with COc1cccc2c1OCc1cn(nn1)CCOc1ccc(F)cc1C(=O)N1CCN(CC1)C2 in 34.6 s and is solved
+Done with COc1cc(OC)c2c(-c3ccc(Cl)cc3)cn3c2c1C(=O)OC/C=C\C3 in 27.8 s and is not solved
+Done with c1ccc2c(c1)cc1ccnc3c1c2c1cccc2ccn3c21 in 75.8 s and is not solved
+Done with c1cnc2c(c1)c1c(c3cccnc32)SC(=C2SC3=C(SCCS3)S2)S1 in 26.9 s and is not solved
+Done with CN1CC2c3ccccc3CC=CN2C1 in 38.1 s and is not solved
+Done with CN(C)CCOc1ccc2cc1-c1ccccc1NC(=O)c1cccc(c1)C2(C)C in 24.1 s and is not solved
+Done with CC1=Nc2ccc3c(c(C)cc4c5ccccc5ccc34)c2C1 in 55.9 s and is not solved
+Done with c1ccc2c(c1)CNC1CCCCC1NCc1ccccc1OCCO2 in 64.8 s and is solved
+Done with C1CCC2CC3C(C2)C2C4CC(C1)CC4C32 in 43.4 s and is not solved
+Done with c1ccc2c(c1)OCCCOc1ccccc1OCCOCOCCO2 in 58.6 s and is not solved
+Done with c1ccc2cc3cc4cc5c(cc4cc3cc2c1)CCC5 in 37.5 s and is solved
+Done with CN(C)c1ccc2c(c1)OCCOCCOCCOCCOc1ccccc1/N=N\2 in 60.9 s and is not solved
+Done with Clc1cnc2nc1Nc1cccc(c1)OCCSc1cccc(c1)N2 in 36.0 s and is solved
+Done with CC1(C)c2ccc3c(oc4ccccc43)c2-c2c1ccc1[nH]c3ccccc3c21 in 40.0 s and is solved
+Done with c1ccc2c3c([nH]c2c1)C1CCCN1C3 in 64.5 s and is solved
+Done with C/C1=N/c2ccccc2CCCc2ccccc21 in 44.3 s and is not solved
+Done with [O-][N+]12C=c3ccc4c5c(ccc(c35)C1=Nc1ccccc12)OCC=4 in 86.3 s and is not solved
+Done with C[C@@]12SC(Cl)=CC1=c1nc3c4ccccc4ccn3c1=C1C=C(Cl)S[C@]12C in 92.6 s and is not solved
+Done with CC1(C)c2ccccc2C(C)(C)c2cc(-c3nccc4c3/C=C/CCCCC=C4)ccc21 in 41.2 s and is solved
+Done with c1ccc2c(c1)c1c(c3ccccc32)-c2cccc3c4cccc5c6cccc-1c6n(c23)c54 in 43.2 s and is not solved
+Done with Brc1sc2c(oc3sccc32)c1Br in 15.2 s and is not solved
+Done with COc1ccc2c(c1)CN1CN2Cc2cc3c(cc21)N1Cc2cc(OC)ccc2N(C3)C1 in 47.4 s and is not solved
+Done with c1cc2ccc3cc(c-2c1)CCc1cc(ccc2cccc1-2)CC3 in 33.8 s and is not solved
+Done with Clc1nc(-c2ccccc2)nc(N2NN=CC34C=CC=CC23c2ccccc2O4)n1 in 42.3 s and is not solved
+Done with c1cc2c(s1)-c1cc3cc4c(cc3cc1C2)-c1sccc1C4 in 49.7 s and is not solved
+Done with c1ccc2c(c1)ccc1c3cccc4cc5ccc6cccc7cc(c21)c(c43)c5c67 in 67.4 s and is not solved
+Done with O=C1NCCCOc2ccc(cc2)[C@H]2NCCc3cc(ccc32)Oc2ccc(O)c1c2 in 91.4 s and is not solved
+Done with Cn1ccc2c3c4ccccc4ccc3c3c(ccn3C)c21 in 21.3 s and is solved
+Done with CN1CCN2CCN(CC2)Cc2ccc(cc2)CN2CCN(CC1)CC2 in 46.3 s and is solved
+Done with N#Cc1nc2c3nnnnc3c3ncccc3c2c(C#N)c1C#N in 23.6 s and is not solved
+Done with O=C1CS(=O)(=O)c2cccccc3cc-3c2N1 in 29.0 s and is not solved
+Done with Nc1ccc(C#Cc2ccc(C#Cc3cc4ccc3CCc3ccccc3CC4)cc2)cc1 in 33.5 s and is not solved
+Done with c1cc2c(c1)c1cc3c4ccc5c6cccc6c6cc7c8ccc2c8c1c3c7c6c54 in 73.8 s and is not solved
+Done with COc1ccc2c(c1)OCCn1cc(nn1)CCC(=O)N1CCC[C@@](O)(CNC2=O)C1 in 36.9 s and is solved
+Done with C[C@@]12O[C@H]3C[C@@H]1[C@H](C[C@@H]3I)[C@H]1CO[C@@H]2O1 in 41.1 s and is not solved
+Done with Cc1cc(C)c2c(c1)oc1cccc3c1c2c1cccc2[nH]c4c5ccccc5ccc4c3c21 in 68.8 s and is not solved
+Done with CCCCc1ccc2c3[n+](ccc2c1)C(CC)(CC)CCc1ccccc1-3 in 41.4 s and is not solved
+Done with Cc1cc2c3c(c1)N(C)c1nc4ccccc4n1B3c1cc(C)c3ccccc3c1O2 in 79.1 s and is not solved
+Done with c1cc2c(o1)c1ccoc1c1c3ccoc3c3cocc3c21 in 31.2 s and is not solved
+Done with C1#CCCc2cc3c(cc2CC1)c1ccc2ccc4ccc5ccc3c3c5c4c2c13 in 44.1 s and is not solved
+Done with C(=C/c1cc2nnc2c2nnc12)\c1ccccc1 in 43.0 s and is not solved
+Done with Cc1c2ccc3sc4ccc(cc4c13)COCc1ccc3sc4ccc(c(C)c4c3c1)COC2 in 90.3 s and is not solved
+Done with Cc1nc2c(o1)-c1ccc3c4c(ccc(c14)C2(C)C)-c1oc(C)nc1C3(C)C in 66.4 s and is not solved
+Done with Oc1ccc2c(c1)CCc1cccc(c1)Oc1cc(ccc1O)CCc1cccc(O)c1-2 in 30.5 s and is not solved
+Done with COc1ccc(-c2nc3ccc4ccccc4c3c3c2CC3)cc1 in 40.4 s and is not solved
+Done with COc1ccc2c(c1)C(c1ccccc1)=C1c3ccccc3N(S(=O)(=O)c3ccc(C)cc3)CC12 in 63.4 s and is not solved
+Done with CCCN1CCCCOc2ccc(cc2)CC(C(=O)OC)NC(=O)c2cccc(c2)C1=O in 31.7 s and is solved
+Done with c1ccc(-c2c3c4c5c(cccc5c5cccc6c7cccc8c7c(c2CC8)[n+]4c56)CC3)cc1 in 50.0 s and is not solved
+Done with Cc1ccc2c(C)c3n(c2c1)CCCn1c-3pc2ccccc21 in 42.4 s and is not solved
+Done with O[C@@H]1[C@H]2O[C@H]2c2c(ccc3nc4ccc5ccccc5c4cc23)[C@H]1O in 58.6 s and is not solved
+Done with Oc1ccc(-c2[nH]c3cc4nccc4cc3c3c2CCCC3)cc1 in 46.9 s and is not solved
+Done with [O-][p+]1c2c(cc3c4ccccc4ccc31)O2 in 37.2 s and is not solved
+Done with O=c1c2ccccc2c2cccc3c4ccccc4c(=O)c4c(-c5ccccc5)c1c2c43 in 43.8 s and is not solved
+Done with Cc1cc(Cl)c2c3c(Cl)cc4c5c(cc(Cl)c(c6c(Cl)cc(C)c1c26)c53)SS4 in 26.8 s and is not solved
+Done with c1cc2nc(c1)Cc1cn(c3ccccc13)Cc1cccc(n1)Cn1cc(c3ccccc31)C2 in 1.62e+02 s and is not solved
+Done with COc1ccc2c(c1)CC[C@@H]1[C@@H]2CC[C@]2(C)c3c(cc(C(=O)O)c4sccc34)C[C@@H]12 in 31.0 s and is not solved
+Done with c1cc2nc(c1)NCCCNc1cccc(n1)CN1CCNCCN(CCNCC1)C2 in 65.4 s and is not solved
+Done with CN1CCCCCCOc2cc(ccn2)-c2nc(cs2)C1=O in 15.9 s and is solved
+Done with COc1ccccc1CC1=N[C@H]2[C@H]([C@@H]3CC[C@H]2O3)C(c2ccccc2)(c2ccccc2)O1 in 1.06e+02 s and is not solved
+Done with O=C1/C=C\c2ccccc2CCSc2cccn21 in 45.1 s and is not solved
+Done with O=C(O)c1c2cccccc2c2c3ccccc4cc(N5CCCC5)c(c12)c43 in 34.0 s and is not solved
+Done with O=C1NS(=O)(=O)NCCCNCC/C2=C/n3c(cc4ccc1cc43)-c1ccccc1OC2 in 81.4 s and is not solved
+Done with Cc1sc2nc[n+](C)c3c2c1Oc1cc2sccc2c(C)c1-3 in 33.0 s and is not solved
+Done with C1=COc2c(c3ccccc3c3cc4ccccc4cc23)C=C1 in 57.1 s and is not solved
+Done with Cc1cc2cc(C(C)C)cc3cc4[nH]c5cc6cc(C(C)C)cc7cc(N)c8c1c(c23)c4c5c8c76 in 27.0 s and is not solved
+Done with O=C(Nc1cccc2c(=O)[nH]c3ccccc3c(=O)c12)c1ccccc1 in 20.2 s and is solved
+Done with Oc1c2c(c3c(ccc4ccc5c6ccccc6ccc5c43)c1O)O2 in 34.1 s and is not solved
+Done with C=C1/C(=C(/C)NC)c2cnc3[nH]cc(c3c2)-c2ccc3ncnc(c3c2)N2CCN(C)C1C2 in 36.0 s and is not solved
+Done with ClC1=CC=CC23NNNC2=NC=C(c2ccccc2)C=C13 in 75.6 s and is not solved
+Done with O=C1OCCCCCCOC(=O)c2ccc(cc2)Oc2ccc1cc2 in 55.0 s and is solved
+Done with CC1CC(C)C2C3CC3C3CC1C32 in 31.9 s and is not solved
+Done with Cc1cc2ccccc2c2ccc3c(O)c(O)c4c(c3c12)O4 in 30.9 s and is not solved
+Done with COC(=O)Nc1ccc2c(c1)NC(=O)[C@H](C)CCC[C@H](N)c1cc-2c2c(n1)CCCC2 in 45.1 s and is not solved
+Done with CN1CN(c2ccccc2)c2ccccc2-c2ccccc2-c2ccccc21 in 41.7 s and is solved
+Done with COc1ccc2sc3c(c2c1)N(Cc1cccc(Cl)c1)CCNC3=O in 36.8 s and is solved
+Done with C[C@]1(F)[C@H](O)O[C@@H]2COC(=O)c3cccc(c3)C(=O)O[C@H]21 in 58.6 s and is not solved
+Done with CC(C)C1(C)C=CC2=C(C=C1)c1ccccc1OC/C=C\CO2 in 45.2 s and is not solved
+Done with c1ccc2c(c1)C1Cc3c4cc(c5ccccc35)CCCCCCCCCCN2C4C1 in 44.8 s and is not solved
+Done with O=C1c2ccccc2C(=O)c2ccc3c4c(ccc1c24)CC3 in 56.1 s and is not solved
+Done with Cc1ccc2c(c1)c1nc3n(c(=O)c1n2CC(=O)Nc1ccccc1F)C1CS(=O)(=O)CC1S3 in 44.8 s and is not solved
+Done with Cc1cccc(Nc2c(-c3ccccc3)ccc3c4c(oc23)=C=C=4)c1 in 28.0 s and is not solved
+Done with O=C1c2ccccc2/C2=C/c3ccccc3Cc3ccccc3CN12 in 71.8 s and is solved
+Done with Nc1nc2ccc3snc4c(-c5ccc(O)cc5F)ccc(c34)n2n1 in 54.5 s and is not solved
+Done with CN1CC2c3ccccc3OCCOc3ccccc3C3CN(C)CN3CCN2C1 in 34.8 s and is not solved
+Done with C1#Cc2ccccc2-c2ccccc2C#CCCCCC1 in 27.3 s and is solved
+Done with c1cnc2ccc3sc4c(sc5ccc6ncccc6c54)c3c2c1 in 33.5 s and is solved
+Done with CN1CCc2ccccc2CC2c3ccccc3NC2CC1 in 37.2 s and is not solved
+Done with c1ccc2c(c1)[nH]c1ccc3c(ccc4c5cccc6c7ccccc7n(c34)c65)c12 in 39.7 s and is not solved
+Done with COc1cc2c3c(c1OC)C(=O)N[C@H]3Cc1ccccc1-2 in 32.1 s and is not solved
+Done with CC12Cc3cc4c(cc3C(c3ccc(N)cc3)=NN1C(Br)=NO2)OCO4 in 43.0 s and is not solved
+Done with CN1CCc2c(c3cccc4c3n2Cc2ccccc2S4)C1 in 37.8 s and is solved
+Done with c1cc2cc3cc-2ccc1CCCCCCCCCCCC3 in 30.6 s and is not solved
+Done with CNc1cc2nc3c(cnn13)C(=O)CCCCc1csc(n1)N2 in 44.7 s and is not solved
+Done with C1#CCSCC#CCOc2ccc(cc2)OC1 in 56.2 s and is solved
+Done with CC1(C)c2cccc3c2-c2c1ccc[n+]2CO3 in 44.2 s and is not solved
+Done with CC(C)c1cccc2c3c(cc-2c1)CCCCCCCCCC3 in 26.6 s and is not solved
+Done with CN(C)c1ccc2c(n1)OC[C@@H]1O[C@H](CC(=O)NC3Cc4ccccc4C3)CC[C@@H]1N(C)C2=O in 28.4 s and is not solved
+Done with C1=C2\Cc3cc(-c4ccccc4)ccc3O[C@H](CC/1)Cc1cc(-c3ccccc3)ccc1O2 in 28.3 s and is not solved
+Done with O=C1C[C@H]2O[C@H](Cn3cc(nn3)Cn3nnc1c3-c1ccccc1)[C@@H](O)[C@H](O)[C@@H]2O in 39.8 s and is not solved
+Done with c1ccc2cc3nc4c(nc3cc2c1)CSc1nc(-c2ccncc2)nn1C4 in 37.6 s and is solved
+Done with Cc1ccc2c(c1)c1cc(C)cc3c1n2C[n+]1cc(C)cc2c4ccccc4n-3c21 in 56.0 s and is not solved
+Done with c1cc2c(c1)c1cc3c4cccc4c4cc5c6cccc6c6cc2c2c6c5c4c3c12 in 67.2 s and is not solved
+Done with [H]/N=C1\c2cccc(c2)C2CN(C)CCN2c2nsc(n2)N1c1ccccc1 in 57.8 s and is not solved
+Done with CC1=CC[C@]23CCN(S(=O)(=O)c4ccc(C)cc4)[C@]12Nc1ccccc13 in 33.0 s and is not solved
+Done with O=C(NC1CCn2nnnc2C1)NC1C2CC3C(C2)C31 in 41.1 s and is solved
+Done with Cc1ccc(/C=C\c2cc3c(C)c(c2)CCc2cccc(c2C)CCC3)cc1 in 24.7 s and is not solved
+Done with Cc1cc2c3c(c1)c1c(n3-c3ccc(F)cc3N(C)C2)CCN(C)C1 in 30.9 s and is solved
+Done with C=C1C(=O)OC2C1CC1OC1(C)CC=CC(C)(OO)CCC=C(C)C2OC(C)=O in 38.6 s and is not solved
+Done with COc1ccc(COc2nc(N3CC45CC4C35)ncc2C(=O)O)cc1Cl in 32.3 s and is not solved
+Done with C=C1C[C@H](OC(=O)/C=C/c2ccccc2)[C@@H]2[C@@H]([C@@H]3[C@H]1CC[C@]3(C)O)C2(C)C in 50.1 s and is not solved
+Done with CC1=CC2C(O)(C1=O)C1OC(C)(C)OCC13OC3C1C2(O)C(C)C(O)C(C)(O)C1(C)C in 56.9 s and is not solved
+Done with CN(c1ccccc1)c1ccc2c(c1)C1OC1c1ccc#cc1-2 in 28.4 s and is not solved
+Done with c1cc2ccc3cc4ccc5ccc6c(c1)c2c3c6c54 in 48.8 s and is not solved
+Done with C=C1C[C@@]23CC[C@H]4[C@H](CC[C@@]4(C)C(=O)O)C(=C)[C@@H]2CC[C@@H]1C3 in 54.1 s and is not solved
+Done with CC(=O)OC[C@H]1O[C@@H]2C[C@@H](Nc3c2ccc2ccccc32)[C@@H]1OC(C)=O in 33.1 s and is not solved
+Done with OC1CC2CC3CCC(C1)N(C3)C2 in 38.4 s and is not solved
+Done with C1=CC2=C(C1)CC1=C2CC2=C1c1ccccc1C2 in 54.8 s and is not solved
+Done with O=C1CCC/C=C\[C@H]2C[C@]34C(=O)NCC[C@H]3CC3(C[C@@H]4N12)OCCO3 in 33.0 s and is not solved
+Done with C=Cc1cc2c3c(ccc(-c4ccc5c6c(cc7c(c46)=CC(C)=C7)CC=5)c3c1C=C)CC2 in 34.1 s and is not solved
+Done with COc1ccc2c(c1OC)[C@@]1(C)OC(=O)N3CCc4cc5c(cc4[C@@]31C2=O)OCO5 in 30.5 s and is not solved
+Done with O=C1NC=CNc2c1sc1ccc3c(c21)CCCN3 in 48.0 s and is not solved
+Done with CCC1CC2CC2C2C1CCC1(C)C2C2CC2C12CCC(=O)O2 in 43.4 s and is not solved
+Done with C1=C2[C@@H]3[C@@H]4CC[C@@H]5OC=C6[C@@H]7[C@@H]8CC[C@H](O1)[C@H]8[C@H]2[C@H]7[C@H]3[C@H]6[C@H]45 in 93.5 s and is not solved
+Done with O=C1Oc2c(O)cccc2[C@@]2(O)C[C@@H]1[C@]1(O)C(=O)c3cccc(O)c3C(=O)[C@]12O in 43.1 s and is not solved
+Done with CC1=C2[C@@H](O)/C=C(/C)[C@@H](O)CC3CCCC/C3=C/C(O)[C@H](CC1)C2(C)C in 41.6 s and is not solved
+Done with COc1ccc(P2(S)(c3ccc(OC)cc3)C3SSP2C3S)cc1 in 38.9 s and is not solved
+Done with COC(=O)C1=NC2=C3NC[N+](=O)[C@@H](O)[C@@]3(c3ccccc3)C3=CC=CC3=CN12 in 77.0 s and is not solved
+Done with CC(=O)O[C@]1(C)CC(=O)[C@@]23C[C@H]1C(C)(C)[C@@H]2CC[C@]3(C)O in 47.6 s and is not solved
+Done with N#CN1[C@H]2[C@@H]3C[C@@H]([C@H]4CC=C[C@H]34)[C@H]2C2(c3ccccc3-c3ccccc32)N1c1ccc(Cl)cc1 in 59.1 s and is not solved
+Done with C[C@@]12C[C@H]3C(Cl)(Cl)[C@]3(C)C[C@@H]1C2(Cl)Cl in 54.7 s and is not solved
+Done with O=C1CCCc2cn(nn2)CCCC(=O)N2CC[C@]3(O)CCN1C[C@@H]3C2 in 33.0 s and is not solved
+Done with C=C1C(N)C2C3CCCCCC3C2C(=C)C2CCC12 in 48.1 s and is not solved
+Done with O=S1(=O)CC2=C1CCc1ccccc12 in 31.1 s and is solved
+Done with c1ccc2cc3c(cc2c1)ncc1ccc2ncoc2c13 in 30.6 s and is not solved
+Done with CC12OC3(C)C[C@@H](OC(=O)c4ccccc4)C1OC2[C@H]3O in 32.9 s and is not solved
+Done with CCC1CC[C@@]2(C)CN(CC)C3C4C(O)C2[C@]13C1CC2CC[C@@]4(O)C1C(=O)O2 in 42.5 s and is not solved
+Done with CC1=C2C(=O)C[C@]3(C)[C@@H]4O[C@@H]4[C@H]4CC[C@H](C)[C@@H](CC1)[C@]4(C)[C@H]23 in 62.5 s and is not solved
+Done with O=C(O)C1=CC2CN1/C=C\N=C\OC/C=C\C=C/C=C/c1ccccc1O2 in 68.5 s and is not solved
+Done with c1nc(N2CCCC2)cnc1NC1=NC[C@@]2(CN3CCC34CC42)O1 in 63.9 s and is not solved
+Done with Clc1cc(OCC2CC3C(C2)C2CC24CC34)c(Br)cn1 in 26.0 s and is not solved
+Done with COC1=CO[N@+]2(C#N)C=CC34CCCC=C3OC3=C4C(=C12)CC[C@H]3O in 80.6 s and is not solved
+Done with Brc1ccc2c(c1)C13CCC(C1)c1c(Br)ccc(c13)N2 in 41.5 s and is not solved
+Done with CC1=C(C)N(CCC23CCC(NCc4ccc5c(n4)NCOCCO5)(CC2)CO3)C(=O)CO1 in 73.7 s and is not solved
+Done with COC(=O)[C@@]1(Cl)[C@H]2CC[C@]34CCC[C@](O)(C=C3CC[C@H]2[C@@](Cl)(C(=O)OC)C1(OC)OC)O4 in 28.9 s and is not solved
+Done with Cc1c(F)cc2c3c1CCCC3=C1CN(C)C(=O)/C(CO)=C(/C(C)C)N2C1 in 62.4 s and is not solved
+Done with C=C1[C@@H]2C[C@@H]3[C@]4(C[C@H]5[C@@H]6[C@@]7(C)[C@H](O)CC[C@@]36[C@@H]([C@H]4C2)N5[C@H]7O)[C@@H]1OC(C)=O in 46.9 s and is not solved
+Done with c1cc2c3c(c1)Sc1cccc4c1B3c1c(cccc1S4)S2 in 49.2 s and is not solved
+Done with c1ccc2c(c1)C1=C(C1)c1ccccc1C1=C2C1 in 43.7 s and is not solved
+Done with CC1(C(F)(F)F)c2cc3c(cc2Oc2cc4c(cc21)C(=O)OC4=O)C(=O)CC3=O in 34.2 s and is not solved
+Done with O=C1[C@H]2[C@@H](CCC#Cc3ccccc3C#C[C@@H]2O)N1Cc1ccccc1 in 56.8 s and is not solved
+Done with O=C1N=CCc2c(ccc3oc(Cc4ccccc4)c(CCNC(=O)C4CC4)c23)N1 in 47.3 s and is not solved
+Done with O[C@@H]1CC2[C@@H](c3ccccc3)C(C[C@@H]1O)[C@H]2c1ccccc1 in 48.7 s and is not solved
+Done with C/N=C(\OC)C1=C(N)CN(C)C(=O)c2ccc(F)cc2C2CCCCN2C(=CN)C=C1NC in 95.3 s and is not solved
+Done with O=C1c2c(ccc3ccccc23)[C@@H]2[C@H]3CC[C@H](C3)[C@H]12 in 47.8 s and is not solved
+Done with C1=CC2CC1C1CCC3C4CCC(C4)C3CCC21 in 54.2 s and is not solved
+Done with C1=CCC2=C3C4CCC(CC4)C3(c3cnc[nH]3)CC2=C1 in 68.3 s and is not solved
+Done with C=C(C)C1CC(=O)C2C3OC4(C)CC5OC(=O)C(C2C1)C5C4C3=O in 41.1 s and is not solved
+Done with O=C(NC1CC2CCC(C1)N2)[C@@H]1CC[C@@H]2CCN1C(=O)N2OS(=O)(=O)O in 64.9 s and is not solved
+Done with COC(=O)[C@@H](O)[C@H]1CC[C@]23CCCC[C@@H]2[C@@]1(C)NC3=O in 34.6 s and is not solved
+Done with CC(C)[C@H]1C[C@@H]2C(C1C)C1C[C@H](S)CC[C@@H]12 in 41.4 s and is not solved
+Done with COCC12CC3(OC)COC(C31)[C@H](n1cnc3c(N)ncnc31)O2 in 38.3 s and is not solved
+Done with CC12C/C=C\C=C/C(=Cc3c(O)cccc31)C2N in 37.2 s and is not solved
+Done with C=C1[C@@H]2CC[C@@H](C(=O)O)[C@]23CC[C@@H](C3)C1(C)C in 44.4 s and is not solved
+Done with CCN(CC)CC1C2CC3=CC3C21O in 23.6 s and is not solved
+Done with CC[C@@]12CCCC3=C1N(CCC2)C(=O)[C@@](OC(=S)Oc1ccccc1)(C(=O)OC)C3 in 31.3 s and is not solved
+Done with CC(=O)O[C@H]1C=C2C(=C[C@@H]3[C@]4(OC(C)=O)CO[C@@H]4C[C@H](OC(C)=O)[C@@]13C)C[C@@H](O)[C@@H]2C in 38.4 s and is not solved
+Done with C1#Cc2ccccc2C#Cc2ccccc2C#CC2=C1C1/C=C\C=C/C2CCC1 in 48.7 s and is not solved
+Done with NC(=O)c1cn2nc1NC(=O)[C@@H]1C[C@H]1CCC21CCN(CC(F)(F)F)CC1 in 28.4 s and is not solved
+Done with COC(=O)C[C@]12[C@@H](C[C@@H]3OC(=O)[C@]14O[C@H]34)[C@]1(C)C[C@H](c3ccoc3)O[C@]13C[C@H]2OC3=O in 65.2 s and is not solved
+Done with CC1(C)C[C@H]2C3=CC[C@@H]4[C@@]5(C)CCC(=O)[C@](C)(CO)C5CC[C@@]4(C)[C@]3(C)C[C@@H]3O[C@H]1[C@@H](O)[C@]32CO in 44.8 s and is not solved
+Done with O=C1OS(=O)(=O)OC(=O)c2cc(O)c1cc2O in 30.8 s and is not solved
+Done with CC=C1C[NH+]([O-])[C@@H]2C[C@H]1[C@@H](C(=O)OC)[C@@]13C[C@H](OC)O[C@@]21Nc1ccccc13 in 27.8 s and is not solved
+Done with CC1C2C=C3C(=CC2C2C=C4C(=CC12)C(C)(C)CC4(C)C)C(C)(C)CC3(C)C in 53.3 s and is not solved
+Done with CCC1=CCC2CN3CCc4c([nH]c5ccccc45)C2(OC(C)=O)C13 in 56.6 s and is not solved
+Done with CC1=C2C=C3C=CC(=O)C=C3N3c4ccccc4CC23NC(=O)N1Cl in 76.1 s and is not solved
+Done with C1CC[C@@]23C4C5CC6C4[C@@]24CCCC[C@@]42O[C@]3(OC1)C5C62 in 52.7 s and is not solved
+Done with COc1ccc2c(c1OC(C)C)C/C=C/Cc1c(ccc(OC)c1OC)OC2 in 25.1 s and is not solved
+Done with CC(C)[C@H]1CC[C@@]23CC[C@H]4OC(C)(O)[C@@H](C[C@]12C)[C@]43C in 56.9 s and is not solved
+Done with COC(=O)C1=C[C@@]23CCCN4CC[C@@]5(c6ccccc6N[C@]15[C@@H]1C(=O)OC(=O)[C@@H]12)[C@@]43C#N in 38.3 s and is not solved
+Done with CC1(C)[C@@H]2C[C@@]34CCCN3C(=O)[C@@]2(CC4=O)C[C@@]12Nc1ccccc1C2=O in 66.5 s and is not solved
+Done with COc1c2c(c(C=O)c3c1C(=O)OC3)O[C@]1(C)CC[C@@]3(O)C(C)(C)CC[C@@H](O)[C@]3(C)[C@H]1C2 in 40.0 s and is not solved
+Done with CC(=O)O[C@H]1CCC(=O)[C@@H]2O[C@H](CC1=O)[C@@H]1[C@H]2[C@@H](C(C)C)C[C@@H]2O[C@]12C in 32.1 s and is not solved
+Done with C[C@@H]1[C@@H](O)CC[C@]23CO[C@H](C[C@H]4[C@@H]5CC[C@H](O)[C@@]5(C)CC[C@@H]42)[C@@]13Br in 37.4 s and is not solved
+Done with CCCC(=O)O[C@H]1C[C@](C)(OC(C)=O)[C@H]2C[C@H](C(C)=O)O[C@@]2(O)[C@@H]2OC(=O)[C@@](C)(O)[C@@]12O in 45.1 s and is not solved
+Done with COC(=O)[C@@H]1CCC2=N[C@@H]3[C@H](C(=O)N21)[C@H]1C=C[C@H]3C1 in 63.3 s and is not solved
+Done with CN1CCN2CCNP1N(C)CC2 in 49.8 s and is not solved
+Done with C=C/N=C(\C)c1nc2c(cc1C)OC[C@@H]1CN2CCCC1CCC(=O)C#CC in 33.6 s and is not solved
+Done with CC1(C)O[C@H]2CC(=O)OC[C@@]23C1CC(=O)[C@]1(C)C3CCC2(C)C(c3ccoc3)OC(=O)[C@H]3O[C@]321 in 63.1 s and is not solved
+Done with CC(C)(C)[Si](C)(C)O[C@]12C#C/C=C\C#C[C@@H](O)C(=C[C@H]3OC4(CCCCC4)O[C@H]31)C2 in 36.3 s and is not solved
+Done with CC(/C=C/CO)C1OC2C1OC1C3OCC3OC12 in 49.0 s and is not solved
+Done with CC1(C)C(=O)C[C@@H]2O[C@@H]3C[C@@H]1[C@@]2(C)[C@H]1CC[C@@]2(C)[C@H](c4ccoc4)OC(=O)[C@H]4O[C@]42[C@@]13C in 42.2 s and is not solved
+Done with CC1=CC(=O)C2(O)OC3(O)C(O)C(C)C4CC(=O)OC5C=C1C2(C)C3C54CO in 49.3 s and is not solved
+Done with C1=CC2=C3O[C@]4(Oc5ccccc5C(CC3C1)N4c1ccccc1)[N+](c1ccccc1)=C2 in 1.23e+02 s and is not solved
+Done with O=P1(O)OC23CC4CC5C6CC(CC52)CC3(O1)C6C4 in 62.0 s and is not solved
+Done with O=C(O)C1CC2OOC1C1OOC21 in 61.4 s and is not solved
+Done with O=C1Nc2ccccc2C2=Nc3ccccc3N=C(c3ccccc3)N2/C1=C/c1ccccc1 in 1.81e+02 s and is not solved
+Done with C[n+]1cc2ccc1CCCCCCCCNC2=O in 35.8 s and is not solved
+Done with CC12CCCC(C)(CNC1)C1CCC2C1 in 38.0 s and is not solved
+Done with CO[C@H]1CCC2=CCN3CC[C@@H]4COC(=O)C=C4[C@]23C1 in 50.8 s and is not solved
+Done with O=C1C[C@@H]2CC(=O)c3c(O)cccc3C23C(=C2C=CC(=O)c4c(O)ccc3c42)c2cccc(O)c21 in 54.1 s and is not solved
+Done with CC1C2=C(C3C=CC2C3)C(C)C2C(=O)C=CC(=O)C12 in 47.3 s and is not solved
+Done with CCN1CN(CC)[C@H]2C[C@@H]1C1C2[C@H]2C[C@@H]1N(CC)CN2CC in 42.7 s and is not solved
+Done with N#C[C@]12C[C@H]3CC1C(O[C@@H]2O)C3O in 32.3 s and is not solved
+Done with C1=CC(B2O[C@H]3CCc4cc5ccccc5cc4[C@H]3O2)=CC1 in 62.4 s and is not solved
+Done with C=C(CCC=C(C)C)C1CC23C(C)=CC1C(=O)C2(C)CCC1C(C)C(=O)OC13 in 38.3 s and is not solved
+Done with c1ccc2nc3c(cc2c1)-c1nc2ccccc2n1-3 in 18.7 s and is solved
+Done with CC1/C2=N\C/C=N\CC1C(=O)Nc1ccc(Cl)cc12 in 74.7 s and is not solved
+Output saved to /share/home/weiliao02/lyx/zinc_project/rascore_pilot_v1/aizynth_results/active_batch_400_zinc_askcos.json.gz

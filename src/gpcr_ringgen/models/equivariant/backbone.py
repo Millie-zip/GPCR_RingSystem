@@ -13,6 +13,7 @@ import torch
 from torch import Tensor, nn
 
 from gpcr_ringgen.core.types import Stage3DiffusionState
+from gpcr_ringgen.core.vocab import ATOM_TYPE_COUNT, BOND_TYPE_COUNT
 from gpcr_ringgen.models.embeddings import SinusoidalTimestepEmbedding
 from gpcr_ringgen.models.equivariant.layers import EGNNMessageLayer
 from gpcr_ringgen.utils.io import load_yaml_config
@@ -60,6 +61,8 @@ class EquivariantDenoiserConfig:
     num_bond_types: int | None = None
     num_formal_charge_types: int | None = None
     num_chirality_types: int | None = None
+    atom_type_vocab_size: int = ATOM_TYPE_COUNT
+    bond_type_vocab_size: int = BOND_TYPE_COUNT
 
     def __post_init__(self) -> None:
         for name in (
@@ -86,6 +89,8 @@ class EquivariantDenoiserConfig:
                 "descriptor_dim",
                 _positive_int("descriptor_dim", self.descriptor_dim),
             )
+        for name in ("atom_type_vocab_size", "bond_type_vocab_size"):
+            object.__setattr__(self, name, _positive_int(name, getattr(self, name)))
         if (self.num_atom_types is None) != (self.num_bond_types is None):
             raise ValueError(
                 "num_atom_types and num_bond_types must either both be set or absent"
@@ -141,6 +146,8 @@ class EquivariantDenoiserConfig:
             "num_bond_types",
             "num_formal_charge_types",
             "num_chirality_types",
+            "atom_type_vocab_size",
+            "bond_type_vocab_size",
         ):
             if name in model_config:
                 values[name] = model_config[name]
@@ -185,12 +192,12 @@ class DenoiserOutput:
         if bool(
             (
                 self.coordinate_noise.masked_select(
-                    ~state.mask.atom_mask.unsqueeze(-1)
+                    ~state.mask.diffusion_mask.unsqueeze(-1)
                 )
                 != 0
             ).any()
         ):
-            raise ValueError("coordinate_noise must be zero for padded atoms")
+            raise ValueError("coordinate_noise must be zero for fixed/padded atoms")
         if (self.atom_type_logits is None) != (self.bond_type_logits is None):
             raise ValueError(
                 "atom_type_logits and bond_type_logits must both be present or absent"
@@ -285,8 +292,12 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
             else nn.Linear(config.descriptor_dim, config.hidden_dim)
         )
         if config.num_atom_types is None:
-            self.atom_type_embedding = None
-            self.bond_type_embedding = None
+            self.atom_type_embedding = nn.Embedding(
+                config.atom_type_vocab_size, config.hidden_dim,
+            )
+            self.bond_type_embedding = nn.Embedding(
+                config.bond_type_vocab_size, config.edge_feature_dim,
+            )
             self.atom_type_head = None
             self.bond_type_head = None
             self.formal_charge_embedding = None
@@ -413,6 +424,11 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
             valid_bond_types = state.bond_types.masked_select(state.mask.edge_mask)
             if bool((valid_bond_types >= self.config.num_bond_types).any()):
                 raise ValueError("state bond_types exceed the configured vocabulary")
+        elif state.atom_types is not None and state.bond_types is not None:
+            if bool((state.atom_types >= self.config.atom_type_vocab_size).any()):
+                raise ValueError("state atom_types exceed the configured vocabulary")
+            if bool((state.bond_types >= self.config.bond_type_vocab_size).any()):
+                raise ValueError("state bond_types exceed the configured vocabulary")
         if self.config.num_formal_charge_types is not None:
             if state.formal_charge_types is None or state.chiralities is None:
                 raise ValueError(
@@ -451,8 +467,8 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
         atom_mask = state.mask.atom_mask
         node_features = self.atom_projection(state.atom_features)
         edge_features = state.edge_features
-        if self.atom_type_embedding is not None:
-            if state.atom_types is None or state.bond_types is None:
+        if self.atom_type_embedding is not None and state.atom_types is not None:
+            if state.bond_types is None:
                 raise ValueError("joint chemical state labels are required")
             if self.bond_type_embedding is None:
                 raise RuntimeError("bond type embedding is unavailable")
@@ -515,15 +531,18 @@ class EquivariantDenoiserBackbone(nn.Module, EquivariantBackbone):
                 edge_features,
                 atom_mask,
                 state.mask.edge_mask,
+                state.mask.diffusion_mask,
             )
 
-        coordinate_mask = atom_mask.unsqueeze(-1).to(initial_coordinates.dtype)
+        coordinate_mask = state.mask.diffusion_mask.unsqueeze(-1).to(initial_coordinates.dtype)
         coordinate_noise = (updated_coordinates - initial_coordinates) * coordinate_mask
         valid_counts = coordinate_mask.sum(dim=1, keepdim=True)
         prediction_center = (
             coordinate_noise.sum(dim=1, keepdim=True) / valid_counts
         )
-        coordinate_noise = (coordinate_noise - prediction_center) * coordinate_mask
+        centered_prediction = (coordinate_noise - prediction_center) * coordinate_mask
+        has_fixed_anchor = (atom_mask & ~state.mask.diffusion_mask).any(dim=1, keepdim=True).unsqueeze(-1)
+        coordinate_noise = torch.where(has_fixed_anchor, coordinate_noise, centered_prediction)
         atom_type_logits: Tensor | None = None
         bond_type_logits: Tensor | None = None
         formal_charge_logits: Tensor | None = None

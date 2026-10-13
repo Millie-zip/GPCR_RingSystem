@@ -63,8 +63,12 @@ def _make_contract_parts(
         edge_index[-1, :, -1] = -1
 
     scaffold = MolecularGraph(
+        atom_type_vocab_size=9,
+        bond_type_vocab_size=4,
         atom_features=atom_features,
+        atom_types=torch.tensor([[0, 1, 2]] * batch_size, dtype=torch.long).masked_fill(~atom_mask, 0),
         edge_index=edge_index,
+        bond_types=torch.tensor([[0, 1]] * batch_size, dtype=torch.long).masked_fill(~edge_mask, 0),
         edge_features=edge_features,
         coordinates=coordinates,
     )
@@ -74,7 +78,11 @@ def _make_contract_parts(
     )
     stage2 = Stage2Output(
         scaffold=scaffold,
-        mask=BatchMask(atom_mask=atom_mask, edge_mask=edge_mask),
+        mask=BatchMask(
+            atom_mask=atom_mask,
+            edge_mask=edge_mask,
+            diffusion_mask=atom_mask.clone(),
+        ),
         metadata=metadata,
     )
     descriptor = DescriptorBatch(torch.randn(batch_size, 5))
@@ -111,6 +119,7 @@ def test_adapter_accepts_mock_mapping_without_stage2_model() -> None:
         "scaffold": stage2.scaffold,
         "atom_mask": stage2.mask.atom_mask,
         "edge_mask": stage2.mask.edge_mask,
+        "diffusion_mask": stage2.mask.diffusion_mask,
         "sample_ids": ["mapping-sample"],
         "metadata": [{"source": "plain-mapping"}],
     }
@@ -196,6 +205,43 @@ def test_invalid_edge_endpoint_has_clear_error() -> None:
         )
 
 
+def test_unsupported_atom_type_id_is_rejected() -> None:
+    stage2, descriptor, pocket, _, _ = _make_contract_parts()
+    stage2.scaffold.atom_types[0, 0] = 9
+
+    with pytest.raises(ValueError, match="atom_types.*unsupported category ID"):
+        stage2_output_to_stage3_input(
+            stage2,
+            descriptor=descriptor,
+            pocket=pocket,
+        )
+
+
+def test_unsupported_bond_type_id_is_rejected() -> None:
+    stage2, descriptor, pocket, _, _ = _make_contract_parts()
+    stage2.scaffold.bond_types[0, 0] = 4
+
+    with pytest.raises(ValueError, match="bond_types.*unsupported category ID"):
+        stage2_output_to_stage3_input(
+            stage2,
+            descriptor=descriptor,
+            pocket=pocket,
+        )
+
+
+def test_shared_graph_accepts_configured_route_a_bond_vocabulary() -> None:
+    stage2, descriptor, pocket, _, _ = _make_contract_parts()
+    stage2.scaffold.bond_type_vocab_size = 5
+    stage2.scaffold.bond_types[0, 0] = 4
+
+    result = stage2_output_to_stage3_input(
+        stage2, descriptor=descriptor, pocket=pocket,
+    )
+
+    assert result.scaffold.bond_types[0, 0] == 4
+    assert torch.equal(result.mask.diffusion_mask, result.mask.atom_mask)
+
+
 def test_stage3_diffusion_state_contract_validates_timestep_dtype() -> None:
     stage2, descriptor, pocket, descriptor_mask, pocket_mask = _make_contract_parts()
     stage3_input = stage2_output_to_stage3_input(
@@ -207,7 +253,9 @@ def test_stage3_diffusion_state_contract_validates_timestep_dtype() -> None:
     )
     state = Stage3DiffusionState(
         atom_features=stage3_input.scaffold.atom_features,
+        atom_types=stage3_input.scaffold.atom_types,
         edge_index=stage3_input.scaffold.edge_index,
+        bond_types=stage3_input.scaffold.bond_types,
         edge_features=stage3_input.scaffold.edge_features,
         coordinates=stage3_input.scaffold.coordinates,
         descriptor=stage3_input.descriptor.values,
@@ -231,7 +279,9 @@ def test_stage3_diffusion_state_requires_coordinates() -> None:
     )
     state = Stage3DiffusionState(
         atom_features=stage3_input.scaffold.atom_features,
+        atom_types=stage3_input.scaffold.atom_types,
         edge_index=stage3_input.scaffold.edge_index,
+        bond_types=stage3_input.scaffold.bond_types,
         edge_features=stage3_input.scaffold.edge_features,
         coordinates=None,
         descriptor=stage3_input.descriptor.values,
