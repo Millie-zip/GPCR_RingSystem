@@ -13,6 +13,12 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
+from gpcr_ringgen.checkpoint_semantics import (
+    label_cache_provenance,
+    reward_semantics,
+    training_provenance,
+    validate_reward_metadata,
+)
 from gpcr_ringgen.data import collate_molecules
 from gpcr_ringgen.models.diffusion import clean_stage3_state
 from gpcr_ringgen.training.ra_reward import (
@@ -141,6 +147,9 @@ def run_ra_reward_training(config: Mapping[str, Any]) -> RARewardTrainingResult:
     if not isinstance(config, Mapping):
         raise TypeError("config must be a mapping")
     options = _validate_config(config)
+    semantics = reward_semantics(config, options["model_config"].to_mapping())
+    provenance = {**training_provenance(config), **label_cache_provenance(options["labels_path"])}
+    validate_reward_metadata(semantics, provenance, options["model_config"].to_mapping())
     set_seed(int(config["seed"]))
     train_dataset = RAScoreLabeledDataset(
         options["records_path"],
@@ -200,6 +209,8 @@ def run_ra_reward_training(config: Mapping[str, Any]) -> RARewardTrainingResult:
                 model,
                 last_checkpoint,
                 epoch=epoch,
+                semantics=semantics,
+                provenance=provenance,
                 optimizer=optimizer,
                 metrics=metrics,
             )
@@ -209,6 +220,8 @@ def run_ra_reward_training(config: Mapping[str, Any]) -> RARewardTrainingResult:
                     model,
                     best_checkpoint,
                     epoch=epoch,
+                    semantics=semantics,
+                    provenance=provenance,
                     optimizer=optimizer,
                     metrics=metrics,
                 )
@@ -217,6 +230,7 @@ def run_ra_reward_training(config: Mapping[str, Any]) -> RARewardTrainingResult:
             "epochs_completed": options["epochs"],
             "train_records": len(train_dataset),
             "validation_records": len(validation_dataset),
+            "training_provenance": provenance,
             "last_checkpoint": str(last_checkpoint),
             "best_checkpoint": str(best_checkpoint),
         },

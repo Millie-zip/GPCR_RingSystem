@@ -15,6 +15,11 @@ from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
+from gpcr_ringgen.checkpoint_semantics import (
+    generator_semantics,
+    training_provenance,
+    validate_generator_checkpoint,
+)
 from gpcr_ringgen.data import FeatureManifest, JsonlMolecularDataset, collate_molecules
 from gpcr_ringgen.models.diffusion import (
     DDPMConfig,
@@ -276,6 +281,8 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
         raise TypeError("config must be a mapping")
     options = _validate_config(config)
     options = {**options, "seed": config["seed"]}
+    semantics = generator_semantics(config)
+    provenance = training_provenance(config)
     set_seed(int(config["seed"]))
     LOGGER.info(
         "Training setup: data=%s, device=%s, dtype=%s, epochs=%d, batch_size=%d",
@@ -311,6 +318,7 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
             raise ConfigurationError("resume checkpoint lacks model_state_dict")
         if checkpoint.get("feature_manifest_hash") != options["manifest_hash"]:
             raise ConfigurationError("resume checkpoint feature manifest does not match current data")
+        validate_generator_checkpoint(checkpoint, config, resume_provenance=provenance)
         model.load_state_dict(checkpoint["model_state_dict"], strict=True)
         if isinstance(checkpoint.get("optimizer_state_dict"), Mapping):
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -339,7 +347,9 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
                 validation_loss,
             )
             payload = {
-                "checkpoint_version": 1,
+                "checkpoint_version": 2,
+                "semantics": semantics,
+                "training_provenance": provenance,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "epoch": epoch,
@@ -359,7 +369,7 @@ def run_training(config: dict[str, Any]) -> TrainingResult:
                     validation_loss,
                     best_checkpoint.resolve(),
                 )
-    save_json({"epochs_completed": options["epochs"], "train_records": len(train_dataset), "validation_records": len(validation_dataset), "last_checkpoint": str(last_checkpoint), "best_checkpoint": str(best_checkpoint)}, output_dir / "summary.json")
+    save_json({"epochs_completed": options["epochs"], "train_records": len(train_dataset), "validation_records": len(validation_dataset), "last_checkpoint": str(last_checkpoint), "best_checkpoint": str(best_checkpoint), "training_provenance": provenance}, output_dir / "summary.json")
     LOGGER.info(
         "Training finished: epochs_completed=%d, best_validation_loss=%.6f, summary=%s",
         options["epochs"],

@@ -50,6 +50,11 @@ field_conditioning:
 ra_reward:
   enabled: true
   checkpoint: /absolute/path/to/ra_reward/best.ckpt
+  # Copy these three values from the reward training summary.json.
+  expected_provenance:
+    teacher_version: REPLACE_WITH_TRAINING_TEACHER_VERSION
+    labels_sha256: REPLACE_WITH_TRAINING_LABELS_SHA256
+    records_sha256: REPLACE_WITH_TRAINING_RECORDS_SHA256
   guidance_scale: 0.8
   start_ratio: 0.5
   eval_every: 1

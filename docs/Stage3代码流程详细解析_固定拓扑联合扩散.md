@@ -355,6 +355,21 @@ beta_tilde_t = beta_t * (1 - alpha_bar_{t-1})
 
 模型的 atom/bond logits 参数化 `p_theta(z_0 | z_t)`。`categorical_reverse_step()` 将预测的干净类别分布与已知均匀前向 transition 组合，得到 `p_theta(z_{t-1} | z_t)`；`t=0` 时直接从模型的干净类别分布采样。
 
+当 `t>0` 时，先对每个候选干净类别 `i` 分别计算并归一化条件后验，再按模型预测的干净类别概率混合：
+
+```text
+q(z_{t-1}=k | z_t=j, z_0=i)
+  = Q_t[k,j] * Qbar_previous[i,k]
+    / sum_l(Q_t[l,j] * Qbar_previous[i,l])
+
+p_theta(z_{t-1}=k | z_t=j)
+  = sum_i(p_theta(z_0=i | z_t=j) * q(z_{t-1}=k | z_t=j, z_0=i))
+```
+
+这里 `Qbar_previous` 是此前各步前向转移矩阵的乘积。不能先混合未归一化的分子，再统一归一化，因为不同 `i` 的分母不同。当前实现利用均匀转移结构，以每个标签 `O(K)` 的时间和空间完成计算，不构造 `K×K` 中间张量。最后的归一化用于修正浮点误差；`t=0` 的采样分布仍是 logits 的 softmax，padding 和有效性 mask 保持不变。
+
+修正公式后，同一 seed 在当前实现内仍可复现，但生成的类别序列可能与修复前不同。模型结构、训练目标及权重格式没有因这项修复改变；修正采样概率不等于已验证完整模型的化学效果。
+
 ### 两种 sampler
 
 | Sampler | 模式 | 生成内容 |

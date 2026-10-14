@@ -3,6 +3,7 @@
 data:
   path: /absolute/path/to/stage3_training.jsonl
   labels_path: /absolute/path/to/rascore_labels.db
+  feature_manifest: configs/data/stage3_joint_feature_manifest.yaml
   max_records: null
 
 training:
@@ -19,6 +20,10 @@ device:
   dtype: float32
 
 seed: 42
+
+chemical_vocabulary:
+  atom_types: [C, N, O, S, P, F, Cl, Br, I, H, B, Si]
+  bond_types: [SINGLE, DOUBLE, TRIPLE, AROMATIC]
 
 ra_reward_model:
   atom_feature_dim: 3

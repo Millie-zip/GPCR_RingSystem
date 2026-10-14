@@ -47,9 +47,77 @@ only outside the core and copied unchanged inside it. Atom type and coordinates
 are generated for all real atoms.
 
 The persisted coordinate-only training schema uses frozen categorical IDs: `C=0`, `N=1`, `O=2`, `S=3`, `P=4`, `F=5`,
-`Cl=6`, `Br=7`, `I=8` for atoms and `SINGLE=0`, `DOUBLE=1`, `TRIPLE=2`,
+`Cl=6`, `Br=7`, `I=8`, `H=9`, `B=10`, `Si=11` for atoms and `SINGLE=0`, `DOUBLE=1`, `TRIPLE=2`,
 `AROMATIC=3` for bonds. Padding uses ID 0 and is excluded by masks. There is
 no unknown category in that persisted schema: its adapters must reject unsupported chemistry. Joint and Route-A label bounds follow their configured vocabularies. `diffusion_mask` defaults to `atom_mask`; an explicit mask can preserve fixed coordinate anchors in coordinate-only sampling.
+
+The canonical IDs live in `gpcr_ringgen.vocabulary` and are re-exported by
+`core.vocab` and `data.vocabulary`. Offline asset builders use the same labels
+without importing torch. Coordinate models default to 12 atom embeddings.
+To load an existing 9-class coordinate checkpoint, explicitly set
+`model.atom_type_vocab_size: 9` and keep its original model dimensions. No
+weights are expanded or reinitialized during loading; such a checkpoint still
+supports only IDs 0 through 8. A default 12-class model rejects its incompatible
+embedding shape. Supporting H/B/Si requires a model trained with the expanded
+vocabulary.
+
+The checkpoint must also contain sufficient semantic metadata as described
+below; a matching 9-entry tensor shape alone does not establish compatibility.
+
+The standard JSON adapter accepts optional `atom_types` / `bond_types` label
+sequences. The inference pipeline supplies the configured joint vocabulary,
+or the canonical prefix matching a coordinate model's embedding size. Names
+are converted with that order and numeric IDs are checked against its bounds.
+With no explicit sequences the adapter uses the canonical 12/4 vocabulary.
+
+## Checkpoint semantics
+
+Generator checkpoints now use `checkpoint_version: 2` and store `semantics`
+as plain JSON-compatible data: normalized model/diffusion parameters, ordered
+chemical labels, the complete feature manifest, field conditioning and field
+parameters. Training also stores `training_provenance` with the JSONL SHA-256,
+record limit, split fraction and seed. SHA-256 is streamed once at setup, not
+on every epoch or batch. Source files are expected to remain fixed during a run.
+
+Record inference and the standard JSON pipeline compare the semantic contract
+before loading tensors. The JSON pipeline requires `data.feature_manifest`
+or a top-level inline `feature_manifest` when loading a checkpoint; random
+smoke runs remain usable without a manifest. Resume also compares the data
+fingerprint and split settings. Inference may use new records; the training
+data fingerprint remains provenance rather than an inference input restriction.
+Output/input locations, device, dtype, inference seed and trajectory output
+can change. Epoch count, output directory and optimizer settings can change
+for resume, but its data version, seed, split and scientific contract must match.
+Loading an optimizer state retains its saved optimizer settings.
+
+A version-1 generator can be loaded for inference only if its saved config
+establishes the model, schedule and vocabularies, and either contains feature
+definitions or has a historical manifest byte hash matching the current file.
+Its original manifest path need not exist. For legacy coordinate models with
+an omitted embedding count, the saved embedding shape establishes the frozen
+canonical prefix. An old file without recorded data provenance cannot resume
+training under the verified contract. Bare weights or incomplete metadata are
+rejected. No switch bypasses mismatched scientific semantics.
+
+Reward training additionally requires a feature manifest and ordered chemical
+vocabulary. Its version-2 checkpoint records those definitions, model settings,
+the training JSONL fingerprint, teacher version and a logical label-cache
+fingerprint. The latter hashes ordered `(SMILES, score, teacher_version)` rows,
+so it includes SQLite WAL data and is independent of SQLite file layout or
+location. Empty caches and caches with mixed or missing teacher versions are
+rejected. The teacher version is the label producer's declared identity; it
+does not independently attest the external teacher implementation or weights.
+
+When reward guidance is enabled, set `ra_reward.expected_provenance` to the
+`teacher_version`, `labels_sha256` and `records_sha256` values recorded in the
+reward training `summary.json`. Loading checks these pinned values and the
+generator's full feature and chemical vocabulary definitions. Guidance scale,
+start ratio, temperature and evaluation frequency remain runtime choices.
+Do not derive these expected pins from the checkpoint being validated. Old
+reward files containing only model dimensions lack enough information to
+establish compatibility and are rejected. The standalone checkpoint writer
+also requires `semantics` and `provenance` arguments. All torch loads retain
+`weights_only=True`; matching metadata does not validate model performance.
 
 `Stage2Output` and plain mapping mocks can be adapted with
 `stage2_output_to_stage3_input`. The adapter validates data only; it does not run

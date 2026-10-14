@@ -12,6 +12,8 @@ import torch
 from torch import Tensor, nn
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
+from gpcr_ringgen.checkpoint_semantics import validate_generator_checkpoint
+from gpcr_ringgen.core.vocab import ATOM_ID_TO_TYPE, BOND_ID_TO_TYPE
 from gpcr_ringgen.data import (
     load_stage3_inference_request,
     stage2_output_to_stage3_input,
@@ -196,6 +198,7 @@ def _load_model_checkpoint(
     checkpoint_path: Path,
     *,
     device: torch.device,
+    config: Mapping[str, Any],
 ) -> None:
     if not checkpoint_path.is_file():
         raise ConfigurationError(f"checkpoint not found: {checkpoint_path}")
@@ -205,6 +208,7 @@ def _load_model_checkpoint(
             map_location=device,
             weights_only=True,
         )
+        validate_generator_checkpoint(checkpoint, config)
         model.load_state_dict(_checkpoint_state_dict(checkpoint), strict=True)
     except (EOFError, OSError, pickle.UnpicklingError, RuntimeError, TypeError, ValueError) as exc:
         raise ConfigurationError(
@@ -366,10 +370,47 @@ def run_stage3_inference(
         raise TypeError("config must be a mapping")
     pipeline_config = Stage3InferencePipelineConfig.from_mapping(config)
     device = resolve_device(pipeline_config.device)
+    model_config = EquivariantDenoiserConfig.from_mapping(config)
+    diffusion_config = DDPMConfig.from_mapping(config)
+    chemical_vocabulary: ChemicalVocabulary | None = None
+    if diffusion_config.mode == "joint_chemical":
+        try:
+            chemical_vocabulary = ChemicalVocabulary.from_mapping(config)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ConfigurationError(
+                f"invalid chemical_vocabulary config: {exc}"
+            ) from exc
+        if model_config.num_atom_types != diffusion_config.num_atom_types:
+            raise ConfigurationError("model and diffusion num_atom_types must match")
+        if model_config.num_bond_types != diffusion_config.num_bond_types:
+            raise ConfigurationError("model and diffusion num_bond_types must match")
+        if chemical_vocabulary.num_atom_types != diffusion_config.num_atom_types:
+            raise ConfigurationError(
+                "chemical vocabulary and diffusion num_atom_types must match"
+            )
+        if chemical_vocabulary.num_bond_types != diffusion_config.num_bond_types:
+            raise ConfigurationError(
+                "chemical vocabulary and diffusion num_bond_types must match"
+            )
+        atom_labels = chemical_vocabulary.atom_types
+        bond_labels = chemical_vocabulary.bond_types
+    else:
+        # Legacy coordinate checkpoints can explicitly select the original
+        # nine-entry embedding. Their IDs remain a prefix of the canonical IDs.
+        atom_count = model_config.num_atom_types or model_config.atom_type_vocab_size
+        bond_count = model_config.num_bond_types or model_config.bond_type_vocab_size
+        if atom_count > len(ATOM_ID_TO_TYPE) or bond_count > len(BOND_ID_TO_TYPE):
+            raise ConfigurationError(
+                "coordinate model vocabulary exceeds the canonical labels"
+            )
+        atom_labels = ATOM_ID_TO_TYPE[:atom_count]
+        bond_labels = BOND_ID_TO_TYPE[:bond_count]
     request = load_stage3_inference_request(
         pipeline_config.input_path,
         dtype=pipeline_config.torch_dtype,
         device=device,
+        atom_types=atom_labels,
+        bond_types=bond_labels,
     )
 
     processed_pocket = preprocess_pocket(
@@ -406,32 +447,6 @@ def run_stage3_inference(
     )
 
     set_seed(pipeline_config.seed)
-    model_config = EquivariantDenoiserConfig.from_mapping(config)
-    diffusion_config = DDPMConfig.from_mapping(config)
-    chemical_vocabulary: ChemicalVocabulary | None = None
-    if diffusion_config.mode == "joint_chemical":
-        try:
-            chemical_vocabulary = ChemicalVocabulary.from_mapping(config)
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ConfigurationError(
-                f"invalid chemical_vocabulary config: {exc}"
-            ) from exc
-        if model_config.num_atom_types != diffusion_config.num_atom_types:
-            raise ConfigurationError(
-                "model and diffusion num_atom_types must match"
-            )
-        if model_config.num_bond_types != diffusion_config.num_bond_types:
-            raise ConfigurationError(
-                "model and diffusion num_bond_types must match"
-            )
-        if chemical_vocabulary.num_atom_types != diffusion_config.num_atom_types:
-            raise ConfigurationError(
-                "chemical vocabulary and diffusion num_atom_types must match"
-            )
-        if chemical_vocabulary.num_bond_types != diffusion_config.num_bond_types:
-            raise ConfigurationError(
-                "chemical vocabulary and diffusion num_bond_types must match"
-            )
     backbone = EquivariantDenoiserBackbone(model_config)
     model = FieldConditionedEquivariantDenoiser(
         backbone,
@@ -443,6 +458,7 @@ def run_stage3_inference(
             model,
             pipeline_config.checkpoint_path,
             device=device,
+            config=config,
         )
 
     schedule = DDPMNoiseSchedule(diffusion_config)

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
 
 import torch
+from gpcr_ringgen.checkpoint_semantics import file_sha256, label_cache_provenance, reward_semantics
+from gpcr_ringgen.vocabulary import ATOM_ID_TO_TYPE, BOND_ID_TO_TYPE
 
 from gpcr_ringgen.core.types import (
     BatchMask,
@@ -173,11 +176,24 @@ def test_reward_guidance_scale_zero_is_a_noop() -> None:
 
 def test_reward_checkpoint_round_trip(tmp_path: Path) -> None:
     model = _reward_model()
-    path = save_ra_reward_checkpoint(model, tmp_path / "ra.ckpt", epoch=2)
+    records = tmp_path / "synthetic_records.txt"
+    records.write_text("synthetic round-trip test fixture", encoding="utf-8")
+    labels = tmp_path / "labels.db"
+    with sqlite3.connect(labels) as connection:
+        connection.execute("CREATE TABLE rascore_labels(canonical_smiles TEXT, ra_score REAL, teacher_version TEXT)")
+        connection.execute("INSERT INTO rascore_labels VALUES ('CC', 0.5, 'test_teacher_v1')")
+    semantics = reward_semantics({
+        "feature_manifest": {"schema_version": "test_reward_features_v1", "atom_features": ["a", "b", "c"], "edge_features": ["edge"], "descriptor_features": []},
+        "chemical_vocabulary": {"atom_types": list(ATOM_ID_TO_TYPE), "bond_types": list(BOND_ID_TO_TYPE)},
+    }, model.config.to_mapping())
+    provenance = {"records_sha256": file_sha256(records), **label_cache_provenance(labels)}
+    path = save_ra_reward_checkpoint(model, tmp_path / "ra.ckpt", epoch=2, semantics=semantics, provenance=provenance)
     loaded = load_ra_reward_checkpoint(
         path,
         device=torch.device("cpu"),
         dtype=torch.float32,
     )
     assert loaded.config == model.config
+    assert loaded.checkpoint_semantics == semantics
+    assert loaded.training_provenance == provenance
     assert torch.allclose(loaded(_state()), model(_state()))

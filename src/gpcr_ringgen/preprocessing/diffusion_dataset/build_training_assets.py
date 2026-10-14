@@ -16,11 +16,11 @@ import threading
 import time
 from typing import Any
 
-# Keep the offline builder independent of torch. Importing gpcr_ringgen.core
-# initializes tensor interfaces, while this script only needs the already-frozen
-# categorical names. These tuples are contract-tested against core.vocab.
-SUPPORTED_ATOM_TYPES = ("C", "N", "O", "S", "P", "F", "Cl", "Br", "I")
-SUPPORTED_BOND_TYPES = ("SINGLE", "DOUBLE", "TRIPLE", "AROMATIC")
+# The lightweight canonical module keeps offline jobs independent of torch.
+from gpcr_ringgen.vocabulary import (
+    ATOM_ID_TO_TYPE as SUPPORTED_ATOM_TYPES,
+    BOND_ID_TO_TYPE as SUPPORTED_BOND_TYPES,
+)
 
 
 SOURCE_COLUMNS = (

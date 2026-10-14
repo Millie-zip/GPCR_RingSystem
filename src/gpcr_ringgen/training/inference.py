@@ -10,7 +10,9 @@ from typing import Any, Mapping
 import torch
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
+from gpcr_ringgen.checkpoint_semantics import validate_generator_checkpoint
 from gpcr_ringgen.data import FeatureManifest, JsonlMolecularDataset, collate_molecules
+from gpcr_ringgen.data.vocabulary import ATOM_TYPES, BOND_TYPES
 from gpcr_ringgen.models.diffusion import (
     ChemicalVocabulary,
     DDPMConfig,
@@ -71,6 +73,7 @@ def run_record_inference(config: Mapping[str, Any]) -> Path:
     expected_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     if isinstance(checkpoint, Mapping) and checkpoint.get("feature_manifest_hash") != expected_hash:
         raise ConfigurationError("checkpoint feature manifest does not match inference data")
+    validate_generator_checkpoint(checkpoint, config)
     model.load_state_dict(_state_dict(checkpoint), strict=True)
     diffusion_config = DDPMConfig.from_mapping(config)
     schedule = DDPMNoiseSchedule(diffusion_config)
@@ -116,7 +119,11 @@ def run_record_inference(config: Mapping[str, Any]) -> Path:
         "metadata": record.metadata,
     }
     if state.atom_types is not None and state.bond_types is not None:
-        vocabulary = ChemicalVocabulary.from_mapping(config)
+        vocabulary = (
+            ChemicalVocabulary.from_mapping(config)
+            if diffusion_config.mode == "joint_chemical"
+            else ChemicalVocabulary(atom_types=ATOM_TYPES, bond_types=BOND_TYPES)
+        )
         payload["atom_type_ids"] = state.atom_types[0].detach().cpu().tolist()
         payload["bond_type_ids"] = state.bond_types[0].detach().cpu().tolist()
         payload["chemical_vocabulary"] = {

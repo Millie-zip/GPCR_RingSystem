@@ -12,6 +12,7 @@ from torch import Tensor, nn
 
 from gpcr_ringgen.core.types import Stage3DiffusionState
 from gpcr_ringgen.core.exceptions import ConfigurationError
+from gpcr_ringgen.checkpoint_semantics import plain_data, validate_reward_metadata
 from gpcr_ringgen.utils.io import ensure_directory
 
 
@@ -259,16 +260,21 @@ def save_ra_reward_checkpoint(
     path: str | Path,
     *,
     epoch: int,
+    semantics: Mapping[str, Any],
+    provenance: Mapping[str, Any],
     optimizer: torch.optim.Optimizer | None = None,
     metrics: Mapping[str, Any] | None = None,
 ) -> Path:
     """Save an inspectable, self-describing RA reward checkpoint."""
     if not isinstance(model, RARewardModel):
         raise TypeError("model must be an RARewardModel")
+    validate_reward_metadata(semantics, provenance, model.config.to_mapping())
     output = Path(path)
     ensure_directory(output.parent)
     payload: dict[str, Any] = {
-        "checkpoint_version": 1,
+        "checkpoint_version": 2,
+        "semantics": plain_data(semantics),
+        "training_provenance": plain_data(provenance),
         "model_config": model.config.to_mapping(),
         "model_state_dict": model.state_dict(),
         "epoch": int(epoch),
@@ -299,6 +305,11 @@ def load_ra_reward_checkpoint(
         if not isinstance(config_value, Mapping) or not isinstance(state_dict, Mapping):
             raise ValueError("checkpoint must contain model_config and model_state_dict")
         model = RARewardModel(RARewardModelConfig.from_mapping(config_value)).to(device=device, dtype=dtype)
+        if payload.get("checkpoint_version") != 2:
+            raise ConfigurationError("RA reward checkpoint lacks supported semantic metadata")
+        validate_reward_metadata(payload.get("semantics"), payload.get("training_provenance"), model.config.to_mapping())
+        model.checkpoint_semantics = plain_data(payload["semantics"])
+        model.training_provenance = plain_data(payload["training_provenance"])
         model.load_state_dict(state_dict, strict=True)
         model.eval()
         for parameter in model.parameters():

@@ -223,6 +223,11 @@ def load_rascore_reward_guidance(
         device=device,
         dtype=dtype,
     )
+    from gpcr_ringgen.checkpoint_semantics import validate_reward_guidance_metadata
+
+    validate_reward_guidance_metadata(
+        reward_model.checkpoint_semantics, reward_model.training_provenance, config
+    )
     reward_config = reward_model.config
     expected = {
         "atom_feature_dim": atom_feature_dim,

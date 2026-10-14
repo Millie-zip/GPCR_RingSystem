@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Mapping
-
-
-# Keep the original nine IDs stable and append elements present in the
-# production model-input database.  The source coordinates/topology retain
-# these atoms, so dropping them during materialization would change the graph.
-ATOM_TYPES: tuple[str, ...] = (
-    "C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H", "B", "Si"
+from gpcr_ringgen.core.vocab import (
+    ATOM_ID_TO_TYPE as ATOM_TYPES,
+    ATOM_TYPE_TO_ID,
+    BOND_ID_TO_TYPE as BOND_TYPES,
+    BOND_TYPE_TO_ID,
 )
-BOND_TYPES: tuple[str, ...] = ("SINGLE", "DOUBLE", "TRIPLE", "AROMATIC")
-ATOM_TYPE_TO_ID: Mapping[str, int] = {name: index for index, name in enumerate(ATOM_TYPES)}
-BOND_TYPE_TO_ID: Mapping[str, int] = {name: index for index, name in enumerate(BOND_TYPES)}
 
 
 def normalize_element(value: object) -> str:

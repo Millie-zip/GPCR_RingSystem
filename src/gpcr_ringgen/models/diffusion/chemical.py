@@ -331,6 +331,10 @@ def categorical_reverse_step(
     ``t>0`` it is combined with the known uniform forward transition to obtain
     ``p_theta(z_{t-1} | z_t)``. At ``t=0`` a clean label is sampled directly
     from the prediction. Frozen validity masks are never updated.
+
+    Each ``q(z_{t-1} | z_t, z_0=i)`` is normalized separately, then mixed
+    with weight ``p_theta(z_0=i | z_t)``. The uniform transition structure
+    computes this mixture in O(K) space per label, without a K-by-K tensor.
     """
 
     _validate_category_tensor("noisy_labels", noisy_labels, mask, num_classes)
@@ -358,30 +362,50 @@ def categorical_reverse_step(
         0,
         timestep.to(schedule_device),
     ).to(device=noisy_labels.device, dtype=clean_probabilities.dtype)
+    beta_t = schedule.betas.index_select(
+        0,
+        timestep.to(schedule_device),
+    ).to(device=noisy_labels.device, dtype=clean_probabilities.dtype)
     previous_timestep = torch.clamp(timestep - 1, min=0)
     alpha_bar_previous = schedule.alpha_bars.index_select(
         0,
         previous_timestep.to(schedule_device),
-    ).to(device=noisy_labels.device, dtype=clean_probabilities.dtype)
+    )
     alpha_bar_previous = torch.where(
-        timestep == 0,
+        timestep.to(schedule_device) == 0,
         torch.ones_like(alpha_bar_previous),
         alpha_bar_previous,
     )
-    prior_previous = (
-        alpha_bar_previous[:, None, None] * clean_probabilities
-        + (1.0 - alpha_bar_previous[:, None, None]) / num_classes
-    )
+    # Subtract before casting so small corruption rates retain precision.
+    uniform_previous = ((1.0 - alpha_bar_previous) / num_classes).to(
+        device=noisy_labels.device, dtype=clean_probabilities.dtype
+    )[:, None, None]
+    alpha_bar_previous = alpha_bar_previous.to(
+        device=noisy_labels.device, dtype=clean_probabilities.dtype
+    )[:, None, None]
     transition = torch.full_like(
         clean_probabilities,
         1.0,
-    ) * ((1.0 - alpha_t)[:, None, None] / num_classes)
+    ) * (beta_t[:, None, None] / num_classes)
     transition.scatter_add_(
         -1,
         noisy_labels.unsqueeze(-1),
         alpha_t[:, None, None].expand(*noisy_labels.shape, 1),
     )
-    posterior = prior_previous * transition
+    # For clean class i, Z_i=sum_k Q_t[k,z_t] * Qbar_previous[i,k].
+    # Divide each clean weight by its own Z_i before taking the mixture.
+    normalizers = (
+        alpha_bar_previous * transition
+        + uniform_previous * transition.sum(dim=-1, keepdim=True)
+    )
+    weighted_clean = clean_probabilities / normalizers.clamp_min(
+        torch.finfo(clean_probabilities.dtype).tiny
+    )
+    mixed_prior = (
+        alpha_bar_previous * weighted_clean
+        + uniform_previous * weighted_clean.sum(dim=-1, keepdim=True)
+    )
+    posterior = mixed_prior * transition
     posterior = posterior / posterior.sum(dim=-1, keepdim=True).clamp_min(
         torch.finfo(posterior.dtype).tiny
     )

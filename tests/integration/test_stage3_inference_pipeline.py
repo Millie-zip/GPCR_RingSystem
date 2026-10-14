@@ -11,6 +11,12 @@ import torch
 import yaml
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
+from gpcr_ringgen.models.equivariant import (
+    EquivariantDenoiserBackbone,
+    EquivariantDenoiserConfig,
+    FieldConditionedEquivariantDenoiser,
+    FieldConditioningConfig,
+)
 from gpcr_ringgen.pipeline import (
     Stage3InferencePipelineConfig,
     run_stage3_inference,
@@ -177,4 +183,133 @@ def test_joint_pipeline_rejects_vocabulary_size_mismatch(tmp_path: Path) -> None
     config["chemical_vocabulary"]["atom_types"] = ["C", "N"]
 
     with pytest.raises(ConfigurationError, match="num_atom_types must match"):
+        run_stage3_inference(config)
+
+
+@pytest.mark.parametrize("joint", [False, True], ids=["coordinates", "joint"])
+@pytest.mark.parametrize("numeric_labels", [False, True], ids=["names", "ids"])
+def test_pipeline_accepts_H_B_Si_and_respects_configured_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, joint: bool, numeric_labels: bool
+) -> None:
+    config = _config(tmp_path / "extended_output.json")
+    atom_names = ["H", "B", "Si"]
+    if joint:
+        # The input must follow this order rather than the canonical data order.
+        vocabulary = ["Si", "H", "B", "C", "N", "O", "S", "P", "F", "Cl", "Br", "I"]
+        bonds = ["AROMATIC", "TRIPLE", "DOUBLE", "SINGLE"]
+        config["chemical_vocabulary"] = {"atom_types": vocabulary, "bond_types": bonds}
+        config["model"]["num_atom_types"] = 12
+        config["diffusion"]["num_atom_types"] = 12
+        expected_atom_ids = [1, 2, 0]
+        expected_bond_ids = [3, 2, 0]
+    else:
+        config.pop("chemical_vocabulary")
+        config["diffusion"]["mode"] = "coordinate_only"
+        for key in ("num_atom_types", "num_bond_types", "atom_type_vocab_size", "bond_type_vocab_size"):
+            config["model"].pop(key, None)
+        for key in ("num_atom_types", "num_bond_types"):
+            config["diffusion"].pop(key, None)
+        expected_atom_ids = [9, 10, 11]
+        expected_bond_ids = [0, 1, 3]
+    payload = json.loads(SMOKE_INPUT.read_text(encoding="utf-8"))
+    payload["scaffold"]["atom_types"] = expected_atom_ids if numeric_labels else atom_names
+    payload["scaffold"]["bond_types"] = expected_bond_ids if numeric_labels else ["SINGLE", "DOUBLE", "AROMATIC"]
+    input_path = tmp_path / "extended_input.json"
+    input_path.write_text(json.dumps(payload), encoding="utf-8")
+    config["pipeline"]["input_path"] = str(input_path)
+
+    if joint:
+        original_sample = JointDDPMStage3Sampler.sample
+
+        def check_labels_then_sample(self, stage3_input, denoiser, **kwargs):
+            assert stage3_input.scaffold.atom_types[0].tolist() == expected_atom_ids
+            assert stage3_input.scaffold.bond_types[0].tolist() == expected_bond_ids
+            return original_sample(self, stage3_input, denoiser, **kwargs)
+
+        monkeypatch.setattr(JointDDPMStage3Sampler, "sample", check_labels_then_sample)
+
+    run = run_stage3_inference(config)
+
+    state = run.sampling_output.final_state
+    if not joint:
+        assert state.atom_types[0].tolist() == expected_atom_ids
+        assert state.bond_types[0].tolist() == expected_bond_ids
+    else:
+        assert run.chemical_vocabulary.atom_types == tuple(vocabulary)
+        assert all(0 <= label < 12 for label in state.atom_types[0].tolist())
+    assert torch.isfinite(run.global_coordinates).all()
+    assert run.output_path.is_file()
+
+
+def test_legacy_coordinate_pipeline_rejects_extended_element(tmp_path: Path) -> None:
+    config = _config(tmp_path / "legacy_output.json")
+    config.pop("chemical_vocabulary")
+    config["diffusion"]["mode"] = "coordinate_only"
+    for key in ("num_atom_types", "num_bond_types"):
+        config["model"].pop(key)
+        config["diffusion"].pop(key)
+    # The smoke model explicitly retains its 9-entry embedding configuration.
+    payload = json.loads(SMOKE_INPUT.read_text(encoding="utf-8"))
+    payload["scaffold"]["atom_types"][0] = "H"
+    input_path = tmp_path / "legacy_input.json"
+    input_path.write_text(json.dumps(payload), encoding="utf-8")
+    config["pipeline"]["input_path"] = str(input_path)
+
+    with pytest.raises(ConfigurationError, match="unsupported categories: H"):
+        run_stage3_inference(config)
+
+
+@pytest.mark.parametrize("category", ["H", 9], ids=["name", "id"])
+def test_joint_pipeline_rejects_labels_outside_its_nine_class_vocabulary(
+    tmp_path: Path, category: str | int
+) -> None:
+    config = _config(tmp_path / "rejected.json")
+    payload = json.loads(SMOKE_INPUT.read_text(encoding="utf-8"))
+    payload["scaffold"]["atom_types"] = [category, "N", "O"] if isinstance(category, str) else [category, 1, 2]
+    input_path = tmp_path / "out_of_vocabulary.json"
+    input_path.write_text(json.dumps(payload), encoding="utf-8")
+    config["pipeline"]["input_path"] = str(input_path)
+
+    with pytest.raises(ConfigurationError, match="unsupported categories: H|IDs must be in"):
+        run_stage3_inference(config)
+
+
+def test_legacy_coordinate_pipeline_loads_nine_class_checkpoint(tmp_path: Path) -> None:
+    config = _config(tmp_path / "legacy_checkpoint_output.json")
+    config.pop("chemical_vocabulary")
+    config["diffusion"]["mode"] = "coordinate_only"
+    for key in ("num_atom_types", "num_bond_types"):
+        config["model"].pop(key)
+        config["diffusion"].pop(key)
+    model = FieldConditionedEquivariantDenoiser(
+        EquivariantDenoiserBackbone(EquivariantDenoiserConfig.from_mapping(config)),
+        FieldConditioningConfig.from_mapping(config),
+    )
+    assert model.backbone.atom_type_embedding.weight.shape[0] == 9
+    # A legacy file is usable only when its saved configuration establishes
+    # its scientific meaning. Bare tensor dictionaries are tested separately.
+    config["feature_manifest"] = {
+        "schema_version": "test_pipeline_features_v1",
+        "atom_features": [f"atom_{index}" for index in range(4)],
+        "edge_features": ["edge_0", "edge_1"],
+        "descriptor_features": ["descriptor_0", "descriptor_1", "descriptor_2"],
+    }
+    checkpoint_path = tmp_path / "legacy.ckpt"
+    saved_config = copy.deepcopy(config)
+    saved_config["model"].pop("atom_type_vocab_size")
+    torch.save({"checkpoint_version": 1, "model_state_dict": model.state_dict(), "config": saved_config}, checkpoint_path)
+    config["pipeline"].update(checkpoint_path=str(checkpoint_path), allow_random_weights=False)
+
+    run = run_stage3_inference(config)
+
+    assert run.checkpoint_loaded
+    assert not run.random_weights
+    assert run.sampling_output.final_state.atom_types[0].tolist() == [0, 1, 2]
+    assert run.output_path.is_file()
+    config["field_conditioning"]["channels"].reverse()
+    with pytest.raises(ConfigurationError, match="generator.field_conditioning.channels"):
+        run_stage3_inference(config)
+    config["field_conditioning"]["channels"].reverse()
+    config["model"].pop("atom_type_vocab_size")
+    with pytest.raises(ConfigurationError, match="semantics mismatch"):
         run_stage3_inference(config)

@@ -12,7 +12,7 @@ import torch
 from torch import Tensor
 
 from gpcr_ringgen.core.exceptions import ConfigurationError
-from gpcr_ringgen.core.vocab import ATOM_TYPE_TO_ID, BOND_TYPE_TO_ID
+from gpcr_ringgen.core.vocab import ATOM_ID_TO_TYPE, BOND_ID_TO_TYPE
 from gpcr_ringgen.core.types import (
     BatchMask,
     BatchMetadata,
@@ -41,6 +41,15 @@ def _string_tuple(value: object, name: str) -> tuple[str, ...]:
     if any(not isinstance(item, str) for item in values):
         raise ConfigurationError(f"every {name} entry must be a string")
     return values
+
+
+def _label_mapping(values: Sequence[str], name: str) -> dict[str, int]:
+    labels = _string_tuple(values, name)
+    if not labels or any(not label.strip() for label in labels):
+        raise ConfigurationError(f"{name} must contain non-empty labels")
+    if len(set(labels)) != len(labels):
+        raise ConfigurationError(f"{name} labels must be unique")
+    return {label: index for index, label in enumerate(labels)}
 
 
 def _float_tensor(
@@ -202,14 +211,20 @@ def load_stage3_inference_request(
     *,
     dtype: torch.dtype,
     device: torch.device,
+    atom_types: Sequence[str] = ATOM_ID_TO_TYPE,
+    bond_types: Sequence[str] = BOND_ID_TO_TYPE,
 ) -> Stage3InferenceRequest:
     """Load one pocket, fixed scaffold, and descriptor from standard JSON.
 
     The JSON stores unbatched arrays. This adapter adds a leading batch axis and
     builds existing project data contracts; it performs no pocket centering,
     Field construction, descriptor calculation, or sampling.
+    Category names and integer bounds follow the supplied vocabulary order;
+    callers without an explicit vocabulary use the canonical persisted IDs.
     """
 
+    atom_vocabulary = _label_mapping(atom_types, "atom vocabulary")
+    bond_vocabulary = _label_mapping(bond_types, "bond vocabulary")
     input_path = Path(path)
     if not input_path.is_file():
         raise ConfigurationError(f"Stage 3 inference input not found: {input_path}")
@@ -258,7 +273,7 @@ def load_stage3_inference_request(
         else _categorical_id_tensor(
             scaffold_atom_type_value,
             "scaffold.atom_types",
-            vocabulary=ATOM_TYPE_TO_ID,
+            vocabulary=atom_vocabulary,
             device=device,
         )
     )
@@ -268,7 +283,7 @@ def load_stage3_inference_request(
         else _categorical_id_tensor(
             scaffold_bond_type_value,
             "scaffold.bond_types",
-            vocabulary=BOND_TYPE_TO_ID,
+            vocabulary=bond_vocabulary,
             allow_empty=True,
             device=device,
         )
@@ -363,6 +378,8 @@ def load_stage3_inference_request(
         diffusion_mask = _bool_tensor(scaffold["diffusion_mask"], "scaffold.diffusion_mask", size=atom_features.shape[0], device=device)
     stage2_output = Stage2Output(
         scaffold=MolecularGraph(
+            atom_type_vocab_size=len(atom_vocabulary),
+            bond_type_vocab_size=len(bond_vocabulary),
             atom_features=atom_features.unsqueeze(0),
             coordinates=None if coordinates is None else coordinates.unsqueeze(0),
             edge_index=edge_index.unsqueeze(0),
