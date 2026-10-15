@@ -1,0 +1,8 @@
+{
+  "written": 1090,
+  "failed": 0,
+  "output_jsonl": "data\\processed\\stage3_training.jsonl",
+  "failure_report": "data\\processed\\stage3_training.jsonl.failures.jsonl",
+  "manifest": "configs\\data\\stage3_joint_feature_manifest.yaml",
+  "manifest_sha256": "a542e916bedccda23538572430bf4c1e3ab04ea6fa04ae61971c8def3c7812e8"
+}
